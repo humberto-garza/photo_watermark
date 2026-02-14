@@ -2,6 +2,8 @@
 
 This project is a simple web application that allows users to upload photos and apply watermarks to them. The application is structured to provide a user-friendly interface for watermarking images stored in the "watermark" directory.
 
+https://humberto-garza.github.io/photo_watermark/
+
 ## Project Structure
 
 ```
