@@ -839,42 +839,63 @@ function setupPositionInterface() {
     // Make the dot draggable
     let isDragging = false;
     
+    // Mouse events
     watermarkDot.addEventListener('mousedown', startDrag);
     positionArea.addEventListener('mousedown', function(e) {
         if (e.target === positionArea) {
-            // Click on area to move dot
-            updatePositionFromClick(e);
+            updatePositionFromEvent(e);
         }
     });
+    
+    // Touch events for mobile
+    watermarkDot.addEventListener('touchstart', startDrag, { passive: false });
+    positionArea.addEventListener('touchstart', function(e) {
+        if (e.target === positionArea) {
+            updatePositionFromEvent(e);
+        }
+    }, { passive: false });
     
     function startDrag(e) {
         e.preventDefault();
         isDragging = true;
+        // Add both mouse and touch event listeners
         document.addEventListener('mousemove', handleDrag);
         document.addEventListener('mouseup', stopDrag);
+        document.addEventListener('touchmove', handleDrag, { passive: false });
+        document.addEventListener('touchend', stopDrag);
     }
     
     function handleDrag(e) {
         if (!isDragging) return;
         e.preventDefault();
-        updatePositionFromMouse(e);
+        updatePositionFromEvent(e);
     }
     
     function stopDrag() {
         isDragging = false;
+        // Remove both mouse and touch event listeners
         document.removeEventListener('mousemove', handleDrag);
         document.removeEventListener('mouseup', stopDrag);
+        document.removeEventListener('touchmove', handleDrag);
+        document.removeEventListener('touchend', stopDrag);
     }
     
-    function updatePositionFromClick(e) {
-        updatePositionFromMouse(e);
-    }
-    
-    function updatePositionFromMouse(e) {
+    function updatePositionFromEvent(e) {
         const rect = positionArea.getBoundingClientRect();
         const padding = 10; // Match CSS padding
-        const x = e.clientX - rect.left - padding;
-        const y = e.clientY - rect.top - padding;
+        
+        // Get coordinates from either mouse or touch event
+        let clientX, clientY;
+        if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+        
+        const x = clientX - rect.left - padding;
+        const y = clientY - rect.top - padding;
         
         // Calculate available area (subtract padding from both sides)
         const availableWidth = rect.width - (padding * 2);
@@ -925,45 +946,69 @@ function setupPreviewPositionInterface() {
     // Make the dot draggable
     let isDragging = false;
     
+    // Mouse events
     watermarkDot.addEventListener('mousedown', startDrag);
     positionArea.addEventListener('mousedown', function(e) {
         if (e.target === positionArea) {
-            updatePositionFromClick(e);
+            updatePositionFromEvent(e);
+            // Update preview image for clicks (with debouncer)
+            debouncedUpdatePreviewImage();
         }
     });
+    
+    // Touch events for mobile
+    watermarkDot.addEventListener('touchstart', startDrag, { passive: false });
+    positionArea.addEventListener('touchstart', function(e) {
+        if (e.target === positionArea) {
+            updatePositionFromEvent(e);
+            // Update preview image for touch taps (with debouncer)
+            debouncedUpdatePreviewImage();
+        }
+    }, { passive: false });
     
     function startDrag(e) {
         e.preventDefault();
         isDragging = true;
+        // Add both mouse and touch event listeners
         document.addEventListener('mousemove', handleDrag);
         document.addEventListener('mouseup', stopDrag);
+        document.addEventListener('touchmove', handleDrag, { passive: false });
+        document.addEventListener('touchend', stopDrag);
     }
     
     function handleDrag(e) {
         if (!isDragging) return;
         e.preventDefault();
-        updatePositionFromMouse(e);
+        updatePositionFromEvent(e);
     }
     
     function stopDrag() {
         isDragging = false;
+        // Remove both mouse and touch event listeners
         document.removeEventListener('mousemove', handleDrag);
         document.removeEventListener('mouseup', stopDrag);
+        document.removeEventListener('touchmove', handleDrag);
+        document.removeEventListener('touchend', stopDrag);
         // Update preview image only when dragging ends (with debouncer)
         debouncedUpdatePreviewImage();
     }
     
-    function updatePositionFromClick(e) {
-        updatePositionFromMouse(e);
-        // Update preview image for clicks (with debouncer)
-        debouncedUpdatePreviewImage();
-    }
-    
-    function updatePositionFromMouse(e) {
+    function updatePositionFromEvent(e) {
         const rect = positionArea.getBoundingClientRect();
         const padding = 8; // Match CSS padding for preview
-        const x = e.clientX - rect.left - padding;
-        const y = e.clientY - rect.top - padding;
+        
+        // Get coordinates from either mouse or touch event
+        let clientX, clientY;
+        if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+        
+        const x = clientX - rect.left - padding;
+        const y = clientY - rect.top - padding;
         
         // Calculate available area (subtract padding from both sides)
         const availableWidth = rect.width - (padding * 2);
@@ -975,27 +1020,6 @@ function setupPreviewPositionInterface() {
         
         updatePreviewPositionInterface();
         // Preview image will update when drag ends (in stopDrag)
-    }
-}
-
-function updatePreviewPositionInterface() {
-    const watermarkDot = document.querySelector('#preview-position-container .watermark-dot');
-    if (!watermarkDot) return;
-    
-    // Position the dot within the padded area (8px padding for preview)
-    const padding = 8;
-    const positionArea = watermarkDot.closest('.position-area');
-    if (positionArea) {
-        const totalWidth = positionArea.offsetWidth;
-        const totalHeight = positionArea.offsetHeight;
-        const availableWidth = totalWidth - (padding * 2);
-        const availableHeight = totalHeight - (padding * 2);
-        
-        const left = padding + (watermarkPositionX * availableWidth);
-        const top = padding + (watermarkPositionY * availableHeight);
-        
-        watermarkDot.style.left = left + 'px';
-        watermarkDot.style.top = top + 'px';
     }
 }
 

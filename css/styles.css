@@ -425,7 +425,7 @@ h1 {
 
 /* Keep watermarked images larger */
 #watermarked-image-container img {
-    max-width: 300px !important;
+    max-width: calc(100% - 20px) !important;
     max-height: 200px !important;
     margin: 10px;
     cursor: pointer;
@@ -808,5 +808,43 @@ h1 {
         flex: none;
         min-width: auto;
         width: 100%;
+    }
+    
+    /* Full-size preview mobile layout */
+    .preview-content {
+        flex-direction: column;
+        gap: 15px;
+        padding: 15px;
+    }
+    
+    .preview-main {
+        flex-direction: column;
+        order: 2; /* Image container comes second */
+    }
+    
+    .preview-settings {
+        width: 100%;
+        order: 1; /* Settings come first */
+        max-height: 40vh;
+        overflow-y: auto;
+    }
+    
+    .preview-image-container {
+        margin-right: 0;
+        margin-top: 15px;
+        flex: 1;
+        min-height: 250px;
+    }
+    
+    /* Larger touch targets for mobile */
+    .watermark-dot {
+        width: 20px !important;
+        height: 20px !important;
+        border-width: 3px;
+        touch-action: none; /* Prevent scrolling while dragging */
+    }
+    
+    .position-area {
+        touch-action: none; /* Prevent scrolling while dragging */
     }
 }
