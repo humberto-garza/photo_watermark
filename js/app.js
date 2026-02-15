@@ -465,11 +465,11 @@ function debouncedUpdatePreviewImage() {
         clearTimeout(previewUpdateTimer);
     }
     
-    // Set new timer for 3 seconds
+    // Set new timer for 100 milliseconds
     previewUpdateTimer = setTimeout(() => {
         updatePreviewImage();
         previewUpdateTimer = null;
-    }, 3000);
+    }, 100);
 }
 
 function updatePreviewImage() {
