@@ -81,23 +81,34 @@ h1 {
 }
 
 .image-preview-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 15px;
     margin-top: 20px;
 }
 
-.image-preview-grid img {
+.image-preview-grid h3 {
+    grid-column: 1 / -1;
+    margin: 0 0 15px 0;
     width: 100%;
-    height: 120px;
+}
+
+#image-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+    margin-top: 5px;
+}
+
+#image-container img {
+    width: 100%;
+    height: 96px;
     object-fit: cover;
     border: 2px solid #ddd;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     transition: transform 0.2s;
+    margin: 0;
 }
 
-.image-preview-grid img:hover {
+#image-container img:hover {
     transform: scale(1.05);
 }
 
@@ -110,7 +121,16 @@ h1 {
     margin-bottom: 30px;
 }
 
+.watermark-display-container {
+    display: flex;
+    gap: 20px;
+    align-items: stretch;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+}
+
 #watermark-display {
+    flex: 0 0 350px;
     min-height: 120px;
     border: 2px dashed #ddd;
     border-radius: 8px;
@@ -119,7 +139,27 @@ h1 {
     align-items: center;
     background-color: #f9f9f9;
     padding: 20px;
-    margin-bottom: 20px;
+}
+
+.watermark-display-container .position-control {
+    flex: 0 0 375px;
+    margin: 0;
+    padding: 15px;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+}
+
+.settings-controls {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 15px;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+    min-width: 200px;
 }
 
 .watermark-placeholder {
@@ -195,6 +235,90 @@ h1 {
     font-weight: bold;
 }
 
+/* Position Control */
+.position-control {
+    flex-direction: column;
+    align-items: stretch;
+    display: flex;
+}
+
+.position-control label {
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.watermark-position-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    height: 100%;
+}
+
+.position-area {
+    position: relative;
+    flex: 1;
+    width: 100% !important;
+    min-height: 180px;
+    border: 2px solid #007bff;
+    border-radius: 8px;
+    background: linear-gradient(45deg, #f8f9fa 25%, transparent 25%), 
+                linear-gradient(-45deg, #f8f9fa 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #f8f9fa 75%), 
+                linear-gradient(-45deg, transparent 75%, #f8f9fa 75%);
+    background-size: 8px 8px;
+    background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
+    cursor: crosshair;
+    overflow: hidden;
+    padding: 10px;
+    box-sizing: border-box;
+}
+
+.watermark-dot {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: #007bff;
+    border: 2px solid white;
+    border-radius: 50%;
+    cursor: grab;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: all 0.1s ease;
+}
+
+.watermark-dot:hover {
+    background: #0056b3;
+    transform: translate(-50%, -50%) scale(1.1);
+}
+
+.watermark-dot:active {
+    cursor: grabbing;
+    transform: translate(-50%, -50%) scale(1.2);
+}
+
+.position-instruction {
+    font-size: 12px;
+    color: #666;
+    text-align: center;
+    margin: 5px 0 0 0;
+    font-style: italic;
+}
+
+.preview-position-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.preview-position-container .position-area {
+    width: 120px;
+    height: 80px;
+    padding: 8px;
+}
+
 /* Checkbox styling */
 .checkbox-group {
     display: flex;
@@ -226,7 +350,8 @@ h1 {
 
 .update-preview-section {
     text-align: center;
-    padding-top: 15px;
+    padding-top: 20px;
+    margin-top: 20px;
     border-top: 1px solid #e9ecef;
 }
 
@@ -288,14 +413,14 @@ h1 {
     padding-bottom: 10px;
 }
 
-/* More specific targeting for original images - 50% larger */
+/* More specific targeting for original images */
 #image-container img {
-    margin: 3px;
-    border: 1px solid #ddd;
-    border-radius: 3px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin: 0;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     object-fit: cover;
-    display: inline-block;
+    display: block;
 }
 
 /* Keep watermarked images larger */
@@ -449,7 +574,6 @@ h1 {
     flex: 1;
     display: flex;
     align-items: stretch;
-    position: relative;
     overflow: hidden;
     gap: 20px;
     padding: 0 20px;
@@ -502,11 +626,11 @@ h1 {
 }
 
 .prev-btn {
-    left: 10px;
+    left: 20px;
 }
 
 .next-btn {
-    right: 10px;
+    right: 20px;
 }
 
 .preview-settings {
@@ -668,5 +792,21 @@ h1 {
     
     .preview-image-container {
         padding: 10px;
+    }
+    
+    .watermark-display-container {
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    #watermark-display {
+        flex: none;
+    }
+    
+    .watermark-display-container .position-control,
+    .settings-controls {
+        flex: none;
+        min-width: auto;
+        width: 100%;
     }
 }

@@ -31,47 +31,43 @@
             
             <div class="watermark-upload">
                 <h3 data-translate="watermark-image-title">Watermark Image</h3>
-                <div id="watermark-display">
-                    <div class="watermark-placeholder">
-                        <input type="file" id="watermark-input" accept="image/*">
-                        <label for="watermark-input" class="upload-btn watermark-btn" data-translate="choose-watermark-btn">Choose Watermark Image</label>
-                        <p data-translate="watermark-instruction">Select an image to use as watermark</p>
+                <div class="watermark-display-container">
+                    <div id="watermark-display">
+                        <div class="watermark-placeholder">
+                            <input type="file" id="watermark-input" accept="image/*">
+                            <label for="watermark-input" class="upload-btn watermark-btn" data-translate="choose-watermark-btn">Choose Watermark Image</label>
+                            <p data-translate="watermark-instruction">Select an image to use as watermark</p>
+                        </div>
                     </div>
-                </div>
-            </div>
-            
-            <div class="watermark-settings">
-                <h3 data-translate="settings-title">Settings</h3>
-                <div class="settings-grid">
-                    <div class="setting-group">
-                        <label for="watermark-size" data-translate="size-label">Size:</label>
-                        <input type="range" id="watermark-size" min="0.01" max="1" step="0.01" value="0.2">
-                        <span id="size-value">20%</span>
+                    <div class="setting-group position-control">
+                        <label data-translate="position-label">Position:</label>
+                        <div class="watermark-position-container" id="watermark-position-container">
+                            <div class="position-area">
+                                <div class="watermark-dot"></div>
+                            </div>
+                            <p class="position-instruction" data-translate="position-instruction">Drag the watermark to position it</p>
+                        </div>
                     </div>
-                    
-                    <div class="setting-group">
-                        <label for="watermark-opacity" data-translate="opacity-label">Opacity:</label>
-                        <input type="range" id="watermark-opacity" min="0.01" max="1" step="0.01" value="0.8">
-                        <span id="opacity-value">80%</span>
-                    </div>
-                    
-                    <div class="setting-group checkbox-group">
-                        <label for="watermark-negative" class="checkbox-label">
-                            <input type="checkbox" id="watermark-negative">
-                            <span class="checkmark"></span>
-                            <span data-translate="invert-color-label">Invert Color</span>
-                        </label>
-                    </div>
-                    
-                    <div class="setting-group">
-                        <label for="watermark-position" data-translate="position-label">Position:</label>
-                        <select id="watermark-position">
-                            <option value="bottom-right" selected data-translate="position-bottom-right">Bottom Right</option>
-                            <option value="bottom-left" data-translate="position-bottom-left">Bottom Left</option>
-                            <option value="top-right" data-translate="position-top-right">Top Right</option>
-                            <option value="top-left" data-translate="position-top-left">Top Left</option>
-                            <option value="center" data-translate="position-center">Center</option>
-                        </select>
+                    <div class="settings-controls">
+                        <div class="setting-group">
+                            <label for="watermark-size" data-translate="size-label">Size:</label>
+                            <input type="range" id="watermark-size" min="0.01" max="1" step="0.01" value="0.2">
+                            <span id="size-value">20%</span>
+                        </div>
+                        
+                        <div class="setting-group">
+                            <label for="watermark-opacity" data-translate="opacity-label">Opacity:</label>
+                            <input type="range" id="watermark-opacity" min="0.01" max="1" step="0.01" value="0.8">
+                            <span id="opacity-value">80%</span>
+                        </div>
+                        
+                        <div class="setting-group checkbox-group">
+                            <label for="watermark-negative" class="checkbox-label">
+                                <input type="checkbox" id="watermark-negative">
+                                <span class="checkmark"></span>
+                                <span data-translate="invert-color-label">Invert Color</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
                 
@@ -83,7 +79,7 @@
         
         <div class="section results-section">
             <div id="watermarked-image-container" class="image-grid">
-                <h2 data-translate="watermarked-images-title">Watermarked Images</h2>
+                <h3 data-translate="watermarked-images-title">Watermarked Images</h3>
             </div>
         </div>
     </div>

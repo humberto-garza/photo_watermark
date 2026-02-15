@@ -1,12 +1,14 @@
 let watermarkImage = null;
 let watermarkSize = 0.2;
-let watermarkPosition = 'bottom-right';
+let watermarkPositionX = 0.8; // Relative position (0-1) from left
+let watermarkPositionY = 0.8; // Relative position (0-1) from top
 let watermarkOpacity = 0.8;
 let watermarkNegative = false;
 let originalImages = [];
 let originalImageNames = [];
 let currentPreviewIndex = 0;
 let currentLanguage = 'en';
+let previewUpdateTimer = null; // Debouncer for preview updates
 
 // Translation data
 const translations = {
@@ -23,12 +25,8 @@ const translations = {
         'opacity-label': 'Opacity:',
         'invert-color-label': 'Invert Color',
         'position-label': 'Position:',
-        'position-bottom-right': 'Bottom Right',
-        'position-bottom-left': 'Bottom Left',
-        'position-top-right': 'Top Right',
-        'position-top-left': 'Top Left',
-        'position-center': 'Center',
-        'update-preview-btn': 'Update Preview',
+        'position-instruction': 'Drag the watermark to position it',
+        'update-preview-btn': 'Update Previews',
         'watermarked-images-title': 'Watermarked Images',
         'download-all-btn': 'Download All',
         'change-watermark-btn': 'Change Watermark',
@@ -53,11 +51,7 @@ const translations = {
         'opacity-label': 'Opacidad:',
         'invert-color-label': 'Invertir Color',
         'position-label': 'Posición:',
-        'position-bottom-right': 'Abajo Derecha',
-        'position-bottom-left': 'Abajo Izquierda',
-        'position-top-right': 'Arriba Derecha',
-        'position-top-left': 'Arriba Izquierda',
-        'position-center': 'Centro',
+        'position-instruction': 'Arrastra la marca de agua para posicionarla',
         'update-preview-btn': 'Actualizar Vista Previa',
         'watermarked-images-title': 'Imágenes con Marca de Agua',
         'download-all-btn': 'Descargar Todo',
@@ -118,9 +112,9 @@ function loadLanguageFromStorage() {
 function updateDynamicTranslations() {
     // Update container titles that are dynamically created
     const imageContainer = document.getElementById('image-container');
-    if (imageContainer && originalImages.length > 0 && imageContainer.querySelector('h2')) {
-        const h2 = imageContainer.querySelector('h2');
-        h2.textContent = translations[currentLanguage]['original-images-title'];
+    if (imageContainer && originalImages.length > 0 && imageContainer.querySelector('h3')) {
+        const h3 = imageContainer.querySelector('h3');
+        h3.textContent = translations[currentLanguage]['original-images-title'];
     }
     
     // Update watermarked images section if it has dynamic content
@@ -144,36 +138,15 @@ function updateDynamicTranslations() {
 }
 
 function getWatermarkPosition(canvasWidth, canvasHeight, watermarkWidth, watermarkHeight) {
-    const margin = 20;
-    let x, y;
+    // Calculate absolute position from relative coordinates
+    const x = (canvasWidth - watermarkWidth) * watermarkPositionX;
+    const y = (canvasHeight - watermarkHeight) * watermarkPositionY;
     
-    switch (watermarkPosition) {
-        case 'top-left':
-            x = margin;
-            y = margin;
-            break;
-        case 'top-right':
-            x = canvasWidth - watermarkWidth - margin;
-            y = margin;
-            break;
-        case 'bottom-left':
-            x = margin;
-            y = canvasHeight - watermarkHeight - margin;
-            break;
-        case 'bottom-right':
-            x = canvasWidth - watermarkWidth - margin;
-            y = canvasHeight - watermarkHeight - margin;
-            break;
-        case 'center':
-            x = (canvasWidth - watermarkWidth) / 2;
-            y = (canvasHeight - watermarkHeight) / 2;
-            break;
-        default:
-            x = canvasWidth - watermarkWidth - margin;
-            y = canvasHeight - watermarkHeight - margin;
-    }
+    // Ensure watermark stays within canvas bounds
+    const constrainedX = Math.max(0, Math.min(x, canvasWidth - watermarkWidth));
+    const constrainedY = Math.max(0, Math.min(y, canvasHeight - watermarkHeight));
     
-    return { x, y };
+    return { x: constrainedX, y: constrainedY };
 }
 
 function saveWatermarkToStorage(imageData) {
@@ -209,7 +182,8 @@ function saveSettingsToStorage() {
     try {
         const settings = {
             size: watermarkSize,
-            position: watermarkPosition,
+            positionX: watermarkPositionX,
+            positionY: watermarkPositionY,
             opacity: watermarkOpacity,
             negative: watermarkNegative
         };
@@ -225,15 +199,16 @@ function loadSettingsFromStorage() {
         if (savedSettings) {
             const settings = JSON.parse(savedSettings);
             watermarkSize = settings.size || 0.2;
-            watermarkPosition = settings.position || 'bottom-right';
+            watermarkPositionX = settings.positionX || 0.8;
+            watermarkPositionY = settings.positionY || 0.8;
             watermarkOpacity = settings.opacity || 0.8;
             watermarkNegative = settings.negative || false;
             
             // Update UI elements
             document.getElementById('watermark-size').value = watermarkSize;
-            document.getElementById('watermark-position').value = watermarkPosition;
             document.getElementById('watermark-opacity').value = watermarkOpacity;
             document.getElementById('watermark-negative').checked = watermarkNegative;
+            updatePositionInterface();
             
             return true;
         }
@@ -392,15 +367,14 @@ function showFullSizePreview(imageIndex) {
                                     <input type="range" id="preview-opacity" min="0.01" max="1" step="0.01" value="${watermarkOpacity}">
                                     <span id="preview-opacity-value">${Math.round(watermarkOpacity * 100)}%</span>
                                 </div>
-                                <div class="preview-setting-group">
-                                    <label for="preview-position">${translations[currentLanguage]['position-label']}</label>
-                                    <select id="preview-position">
-                                        <option value="bottom-right" ${watermarkPosition === 'bottom-right' ? 'selected' : ''}>${translations[currentLanguage]['position-bottom-right']}</option>
-                                        <option value="bottom-left" ${watermarkPosition === 'bottom-left' ? 'selected' : ''}>${translations[currentLanguage]['position-bottom-left']}</option>
-                                        <option value="top-right" ${watermarkPosition === 'top-right' ? 'selected' : ''}>${translations[currentLanguage]['position-top-right']}</option>
-                                        <option value="top-left" ${watermarkPosition === 'top-left' ? 'selected' : ''}>${translations[currentLanguage]['position-top-left']}</option>
-                                        <option value="center" ${watermarkPosition === 'center' ? 'selected' : ''}>${translations[currentLanguage]['position-center']}</option>
-                                    </select>
+                                <div class="preview-setting-group position-control">
+                                    <label>${translations[currentLanguage]['position-label']}</label>
+                                    <div class="preview-position-container" id="preview-position-container">
+                                        <div class="position-area">
+                                            <div class="watermark-dot"></div>
+                                        </div>
+                                        <p class="position-instruction">${translations[currentLanguage]['position-instruction']}</p>
+                                    </div>
                                 </div>
                                 <div class="preview-setting-group checkbox-group">
                                     <label for="preview-negative" class="checkbox-label">
@@ -427,6 +401,7 @@ function showFullSizePreview(imageIndex) {
     
     // Add event listeners for preview settings
     setupPreviewSettingsListeners();
+    setupPreviewPositionInterface();
     
     // Close on backdrop click
     overlay.querySelector('.preview-backdrop').addEventListener('click', function(e) {
@@ -442,49 +417,80 @@ function showFullSizePreview(imageIndex) {
 function setupPreviewSettingsListeners() {
     const previewSize = document.getElementById('preview-size');
     const previewOpacity = document.getElementById('preview-opacity');
-    const previewPosition = document.getElementById('preview-position');
     const previewNegative = document.getElementById('preview-negative');
     
     if (previewSize) {
-        previewSize.addEventListener('input', updatePreviewImage);
+        previewSize.addEventListener('input', debouncedUpdatePreviewImage);
     }
     if (previewOpacity) {
-        previewOpacity.addEventListener('input', updatePreviewImage);
-    }
-    if (previewPosition) {
-        previewPosition.addEventListener('change', updatePreviewImage);
+        previewOpacity.addEventListener('input', debouncedUpdatePreviewImage);
     }
     if (previewNegative) {
-        previewNegative.addEventListener('change', updatePreviewImage);
+        previewNegative.addEventListener('change', debouncedUpdatePreviewImage);
     }
+}
+
+function updatePreviewDisplayValues() {
+    // Get preview settings values
+    const previewSize = document.getElementById('preview-size');
+    const previewOpacity = document.getElementById('preview-opacity');
+    const previewNegative = document.getElementById('preview-negative');
+    
+    if (!previewSize || !previewOpacity || !previewNegative) {
+        return;
+    }
+    
+    // Apply preview settings temporarily (for display values only)
+    const tempSize = parseFloat(previewSize.value);
+    const tempOpacity = parseFloat(previewOpacity.value);
+    
+    // Update display values immediately for instant feedback
+    const sizeValue = document.getElementById('preview-size-value');
+    const opacityValue = document.getElementById('preview-opacity-value');
+    
+    if (sizeValue) {
+        sizeValue.textContent = Math.round(tempSize * 100) + '%';
+    }
+    if (opacityValue) {
+        opacityValue.textContent = Math.round(tempOpacity * 100) + '%';
+    }
+}
+
+function debouncedUpdatePreviewImage() {
+    // Update display values immediately for instant feedback
+    updatePreviewDisplayValues();
+    
+    // Clear existing timer
+    if (previewUpdateTimer) {
+        clearTimeout(previewUpdateTimer);
+    }
+    
+    // Set new timer for 3 seconds
+    previewUpdateTimer = setTimeout(() => {
+        updatePreviewImage();
+        previewUpdateTimer = null;
+    }, 3000);
 }
 
 function updatePreviewImage() {
     // Get preview settings values
     const previewSize = document.getElementById('preview-size');
     const previewOpacity = document.getElementById('preview-opacity');
-    const previewPosition = document.getElementById('preview-position');
     const previewNegative = document.getElementById('preview-negative');
     
-    if (!previewSize || !previewOpacity || !previewPosition || !previewNegative) {
+    if (!previewSize || !previewOpacity || !previewNegative) {
         return;
     }
-    
-    // Save current global settings
-    const originalSize = watermarkSize;
-    const originalOpacity = watermarkOpacity;
-    const originalPosition = watermarkPosition;
-    const originalNegative = watermarkNegative;
     
     // Apply preview settings temporarily
     watermarkSize = parseFloat(previewSize.value);
     watermarkOpacity = parseFloat(previewOpacity.value);
-    watermarkPosition = previewPosition.value;
     watermarkNegative = previewNegative.checked;
     
     // Update display values
     const sizeValue = document.getElementById('preview-size-value');
     const opacityValue = document.getElementById('preview-opacity-value');
+    
     if (sizeValue) {
         sizeValue.textContent = Math.round(watermarkSize * 100) + '%';
     }
@@ -510,35 +516,32 @@ function updatePreviewImage() {
     
     // Update global settings to match preview
     updateGlobalSettings();
-    
-    // Restore global settings if needed (comment out the line above if you want to keep changes local to preview only)
-    // watermarkSize = originalSize;
-    // watermarkOpacity = originalOpacity;
-    // watermarkPosition = originalPosition;
-    // watermarkNegative = originalNegative;
 }
 
 function updateGlobalSettings() {
     // Update main settings to match preview settings
     const mainSize = document.getElementById('watermark-size');
     const mainOpacity = document.getElementById('watermark-opacity');
-    const mainPosition = document.getElementById('watermark-position');
     const mainNegative = document.getElementById('watermark-negative');
     
     if (mainSize) mainSize.value = watermarkSize;
     if (mainOpacity) mainOpacity.value = watermarkOpacity;
-    if (mainPosition) mainPosition.value = watermarkPosition;
     if (mainNegative) mainNegative.checked = watermarkNegative;
     
     // Update display values in main interface
     const mainSizeValue = document.getElementById('size-value');
     const mainOpacityValue = document.getElementById('opacity-value');
+    
     if (mainSizeValue) {
         mainSizeValue.textContent = Math.round(watermarkSize * 100) + '%';
     }
     if (mainOpacityValue) {
         mainOpacityValue.textContent = Math.round(watermarkOpacity * 100) + '%';
     }
+    
+    // Update positioning interfaces
+    updatePositionInterface();
+    updatePreviewPositionInterface();
     
     // Save settings
     saveSettingsToStorage();
@@ -720,7 +723,7 @@ function handleFileUpload(event) {
     const imageContainer = document.getElementById('image-container');
     
     // Clear previous images but keep the heading
-    imageContainer.innerHTML = `<h2>${translations[currentLanguage]['original-images-title']}</h2>`;
+    imageContainer.innerHTML = `<h3>${translations[currentLanguage]['original-images-title']}</h3>`;
     originalImages = [];
     originalImageNames = [];
     
@@ -763,7 +766,6 @@ function handleFileUpload(event) {
 
 function updateSettingsValues() {
     watermarkSize = parseFloat(document.getElementById('watermark-size').value);
-    watermarkPosition = document.getElementById('watermark-position').value;
     watermarkOpacity = parseFloat(document.getElementById('watermark-opacity').value);
     watermarkNegative = document.getElementById('watermark-negative').checked;
     
@@ -783,7 +785,6 @@ function updatePreviews() {
 document.addEventListener('DOMContentLoaded', function() {
     const fileInput = document.getElementById('file-input');
     const sizeRange = document.getElementById('watermark-size');
-    const positionSelect = document.getElementById('watermark-position');
     const opacityRange = document.getElementById('watermark-opacity');
     const negativeCheckbox = document.getElementById('watermark-negative');
     const updateBtn = document.getElementById('update-preview-btn');
@@ -800,7 +801,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Only update display values, not previews
     sizeRange.addEventListener('input', updateSettingsValues);
-    positionSelect.addEventListener('change', updateSettingsValues);
     opacityRange.addEventListener('input', updateSettingsValues);
     negativeCheckbox.addEventListener('change', updateSettingsValues);
     
@@ -812,6 +812,9 @@ document.addEventListener('DOMContentLoaded', function() {
         changeLanguage(this.value);
     });
     
+    // Initialize positioning interface
+    setupPositionInterface();
+    
     // Initialize watermark preview if no saved watermark
     if (!hasWatermark) {
         showWatermarkPreview();
@@ -820,3 +823,199 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize display values
     updateSettingsValues();
 });
+
+function setupPositionInterface() {
+    const positionContainer = document.getElementById('watermark-position-container');
+    if (!positionContainer) return;
+    
+    const positionArea = positionContainer.querySelector('.position-area');
+    const watermarkDot = positionContainer.querySelector('.watermark-dot');
+    
+    if (!positionArea || !watermarkDot) return;
+    
+    // Position the dot based on current watermark position
+    updatePositionInterface();
+    
+    // Make the dot draggable
+    let isDragging = false;
+    
+    watermarkDot.addEventListener('mousedown', startDrag);
+    positionArea.addEventListener('mousedown', function(e) {
+        if (e.target === positionArea) {
+            // Click on area to move dot
+            updatePositionFromClick(e);
+        }
+    });
+    
+    function startDrag(e) {
+        e.preventDefault();
+        isDragging = true;
+        document.addEventListener('mousemove', handleDrag);
+        document.addEventListener('mouseup', stopDrag);
+    }
+    
+    function handleDrag(e) {
+        if (!isDragging) return;
+        e.preventDefault();
+        updatePositionFromMouse(e);
+    }
+    
+    function stopDrag() {
+        isDragging = false;
+        document.removeEventListener('mousemove', handleDrag);
+        document.removeEventListener('mouseup', stopDrag);
+    }
+    
+    function updatePositionFromClick(e) {
+        updatePositionFromMouse(e);
+    }
+    
+    function updatePositionFromMouse(e) {
+        const rect = positionArea.getBoundingClientRect();
+        const padding = 10; // Match CSS padding
+        const x = e.clientX - rect.left - padding;
+        const y = e.clientY - rect.top - padding;
+        
+        // Calculate available area (subtract padding from both sides)
+        const availableWidth = rect.width - (padding * 2);
+        const availableHeight = rect.height - (padding * 2);
+        
+        // Convert to relative coordinates (0-1)
+        watermarkPositionX = Math.max(0, Math.min(1, x / availableWidth));
+        watermarkPositionY = Math.max(0, Math.min(1, y / availableHeight));
+        
+        updatePositionInterface();
+        updateSettingsValues();
+    }
+}
+
+function updatePositionInterface() {
+    const watermarkDot = document.querySelector('.watermark-dot');
+    if (!watermarkDot) return;
+    
+    // Position the dot within the padded area (10px padding)
+    const padding = 10;
+    const positionArea = watermarkDot.closest('.position-area');
+    if (positionArea) {
+        const totalWidth = positionArea.offsetWidth;
+        const totalHeight = positionArea.offsetHeight;
+        const availableWidth = totalWidth - (padding * 2);
+        const availableHeight = totalHeight - (padding * 2);
+        
+        const left = padding + (watermarkPositionX * availableWidth);
+        const top = padding + (watermarkPositionY * availableHeight);
+        
+        watermarkDot.style.left = left + 'px';
+        watermarkDot.style.top = top + 'px';
+    }
+}
+
+function setupPreviewPositionInterface() {
+    const positionContainer = document.getElementById('preview-position-container');
+    if (!positionContainer) return;
+    
+    const positionArea = positionContainer.querySelector('.position-area');
+    const watermarkDot = positionContainer.querySelector('.watermark-dot');
+    
+    if (!positionArea || !watermarkDot) return;
+    
+    // Position the dot based on current watermark position
+    updatePreviewPositionInterface();
+    
+    // Make the dot draggable
+    let isDragging = false;
+    
+    watermarkDot.addEventListener('mousedown', startDrag);
+    positionArea.addEventListener('mousedown', function(e) {
+        if (e.target === positionArea) {
+            updatePositionFromClick(e);
+        }
+    });
+    
+    function startDrag(e) {
+        e.preventDefault();
+        isDragging = true;
+        document.addEventListener('mousemove', handleDrag);
+        document.addEventListener('mouseup', stopDrag);
+    }
+    
+    function handleDrag(e) {
+        if (!isDragging) return;
+        e.preventDefault();
+        updatePositionFromMouse(e);
+    }
+    
+    function stopDrag() {
+        isDragging = false;
+        document.removeEventListener('mousemove', handleDrag);
+        document.removeEventListener('mouseup', stopDrag);
+        // Update preview image only when dragging ends (with debouncer)
+        debouncedUpdatePreviewImage();
+    }
+    
+    function updatePositionFromClick(e) {
+        updatePositionFromMouse(e);
+        // Update preview image for clicks (with debouncer)
+        debouncedUpdatePreviewImage();
+    }
+    
+    function updatePositionFromMouse(e) {
+        const rect = positionArea.getBoundingClientRect();
+        const padding = 8; // Match CSS padding for preview
+        const x = e.clientX - rect.left - padding;
+        const y = e.clientY - rect.top - padding;
+        
+        // Calculate available area (subtract padding from both sides)
+        const availableWidth = rect.width - (padding * 2);
+        const availableHeight = rect.height - (padding * 2);
+        
+        // Convert to relative coordinates (0-1)
+        watermarkPositionX = Math.max(0, Math.min(1, x / availableWidth));
+        watermarkPositionY = Math.max(0, Math.min(1, y / availableHeight));
+        
+        updatePreviewPositionInterface();
+        // Preview image will update when drag ends (in stopDrag)
+    }
+}
+
+function updatePreviewPositionInterface() {
+    const watermarkDot = document.querySelector('#preview-position-container .watermark-dot');
+    if (!watermarkDot) return;
+    
+    // Position the dot within the padded area (8px padding for preview)
+    const padding = 8;
+    const positionArea = watermarkDot.closest('.position-area');
+    if (positionArea) {
+        const totalWidth = positionArea.offsetWidth;
+        const totalHeight = positionArea.offsetHeight;
+        const availableWidth = totalWidth - (padding * 2);
+        const availableHeight = totalHeight - (padding * 2);
+        
+        const left = padding + (watermarkPositionX * availableWidth);
+        const top = padding + (watermarkPositionY * availableHeight);
+        
+        watermarkDot.style.left = left + 'px';
+        watermarkDot.style.top = top + 'px';
+    }
+}
+
+function updatePreviewPositionInterface() {
+    const watermarkDot = document.querySelector('#preview-position-container .watermark-dot');
+    if (!watermarkDot) return;
+    
+    // Position the dot within the padded area (8px padding for preview)
+    const padding = 8;
+    const positionArea = watermarkDot.closest('.position-area');
+    if (positionArea) {
+        const totalWidth = positionArea.offsetWidth;
+        const totalHeight = positionArea.offsetHeight;
+        const availableWidth = totalWidth - (padding * 2);
+        const availableHeight = totalHeight - (padding * 2);
+        
+        const left = padding + (watermarkPositionX * availableWidth);
+        const top = padding + (watermarkPositionY * availableHeight);
+        
+        watermarkDot.style.left = left + 'px';
+        watermarkDot.style.top = top + 'px';
+    }
+}
