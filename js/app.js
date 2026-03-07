@@ -6,6 +6,8 @@ let watermarkOpacity = 0.8;
 let watermarkNegative = false;
 let originalImages = [];
 let originalImageNames = [];
+let originalImageFiles = []; // Store original file objects
+let originalImageDPI = []; // Store DPI information
 let currentPreviewIndex = 0;
 let currentLanguage = 'en';
 let previewUpdateTimer = null; // Debouncer for preview updates
@@ -254,19 +256,33 @@ function createNegativeWatermark(watermarkImg, width, height) {
     return tempCanvas;
 }
 
-function applyWatermark(image) {
+function applyWatermark(image, imageIndex = 0) {
     if (!watermarkImage) {
         return null;
     }
     
-    const canvas = document.createElement('canvas');
+    // Get DPI information for this image
+    const dpi = originalImageDPI[imageIndex] || { dpiX: 72, dpiY: 72 };
+    
+    // Create high DPI canvas with exact dimensions
+    const canvas = createHighDPICanvas(image, dpi);
     const ctx = canvas.getContext('2d');
+    
+    // Verify canvas dimensions match original image
+    const originalWidth = image.naturalWidth || image.width;
+    const originalHeight = image.naturalHeight || image.height;
+    
+    console.log(`Image ${imageIndex + 1}: Original ${originalWidth}×${originalHeight}, Canvas ${canvas.width}×${canvas.height}`);
+    
+    // Ensure canvas matches exact original dimensions
+    if (canvas.width !== originalWidth || canvas.height !== originalHeight) {
+        canvas.width = originalWidth;
+        canvas.height = originalHeight;
+        console.warn(`Corrected canvas dimensions to match original: ${canvas.width}×${canvas.height}`);
+    }
 
-    canvas.width = image.naturalWidth;
-    canvas.height = image.naturalHeight;
-
-    // Draw the original image
-    ctx.drawImage(image, 0, 0);
+    // Draw the original image at full size with no scaling
+    ctx.drawImage(image, 0, 0, originalWidth, originalHeight);
     
     // Calculate watermark dimensions
     const maxWatermarkWidth = canvas.width * watermarkSize;
@@ -290,6 +306,10 @@ function applyWatermark(image) {
     
     ctx.globalAlpha = 1.0; // Reset opacity
 
+    // Store dimension and DPI info on canvas for verification
+    canvas.dpi = dpi;
+    canvas.originalDimensions = { width: originalWidth, height: originalHeight };
+    
     return canvas;
 }
 
@@ -302,6 +322,670 @@ function getWatermarkedFilename(originalFilename) {
     return `${nameWithoutExt}_watermark${extension}`;
 }
 
+function getImageMimeType(filename) {
+    const extension = filename.toLowerCase().split('.').pop();
+    switch (extension) {
+        case 'jpg':
+        case 'jpeg':
+            return 'image/jpeg';
+        case 'png':
+            return 'image/png';
+        case 'webp':
+            return 'image/webp';
+        default:
+            return 'image/png'; // Default to PNG for unknown formats
+    }
+}
+
+function getOptimalDataURL(canvas, filename) {
+    const mimeType = getImageMimeType(filename);
+    
+    // For JPEG and WebP, use high quality (0.95 to maintain excellent quality while still compressing)
+    if (mimeType === 'image/jpeg' || mimeType === 'image/webp') {
+        return canvas.toDataURL(mimeType, 0.95);
+    }
+    
+    // For PNG, no quality parameter needed (lossless compression)
+    return canvas.toDataURL(mimeType);
+}
+
+// Instead of writing custom EXIF, let's try to preserve the original image's complete metadata
+function preserveOriginalEXIFWithWatermark(originalFile, canvas, imageIndex) {
+    return new Promise((resolve, reject) => {
+        if (!originalFile || !originalFile.type.startsWith('image/')) {
+            // Fallback to canvas export
+            resolve(canvas.toDataURL('image/jpeg', 0.95));
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const originalBytes = new Uint8Array(e.target.result);
+                
+                // Verify it's a JPEG
+                if (originalBytes[0] !== 0xFF || originalBytes[1] !== 0xD8) {
+                    console.log('Not a JPEG file, using canvas export');
+                    resolve(canvas.toDataURL('image/jpeg', 0.95));
+                    return;
+                }
+
+                console.log(`Preserving EXIF from original file: ${originalFile.name}`);
+                
+                // Extract EXIF data from original
+                const exifData = extractCompleteEXIFData(originalBytes);
+                
+                if (!exifData) {
+                    console.log('No EXIF found in original, using canvas export');
+                    resolve(canvas.toDataURL('image/jpeg', 0.95));
+                    return;
+                }
+
+                // Get watermarked image data
+                const canvasDataURL = canvas.toDataURL('image/jpeg', 0.95);
+                const canvasBase64 = canvasDataURL.split(',')[1];
+                const canvasBinaryString = atob(canvasBase64);
+                const canvasBytes = new Uint8Array(canvasBinaryString.length);
+                
+                for (let i = 0; i < canvasBinaryString.length; i++) {
+                    canvasBytes[i] = canvasBinaryString.charCodeAt(i);
+                }
+
+                // Insert original EXIF into watermarked image
+                const finalImage = insertEXIFIntoJPEG(canvasBytes, exifData);
+                resolve(finalImage);
+                
+            } catch (error) {
+                console.error('Error preserving EXIF:', error);
+                resolve(canvas.toDataURL('image/jpeg', 0.95));
+            }
+        };
+        
+        reader.onerror = () => {
+            console.error('Error reading original file');
+            resolve(canvas.toDataURL('image/jpeg', 0.95));
+        };
+        
+        reader.readAsArrayBuffer(originalFile);
+    });
+}
+
+function extractCompleteEXIFData(jpegBytes) {
+    // Find EXIF segment in original image
+    let offset = 2; // Skip SOI marker
+    
+    while (offset < jpegBytes.length - 4) {
+        if (jpegBytes[offset] === 0xFF && jpegBytes[offset + 1] === 0xE1) {
+            // Found EXIF segment
+            const segmentLength = (jpegBytes[offset + 2] << 8) | jpegBytes[offset + 3];
+            const segmentData = jpegBytes.slice(offset, offset + 2 + segmentLength);
+            
+            // Check if it's actually EXIF (contains "Exif\0\0")
+            if (segmentLength > 8) {
+                const exifStart = offset + 4;
+                if (jpegBytes[exifStart] === 0x45 && // 'E'
+                    jpegBytes[exifStart + 1] === 0x78 && // 'x'
+                    jpegBytes[exifStart + 2] === 0x69 && // 'i'
+                    jpegBytes[exifStart + 3] === 0x66) { // 'f'
+                    
+                    console.log(`Found complete EXIF segment: ${segmentLength} bytes`);
+                    return segmentData;
+                }
+            }
+        }
+        
+        if (jpegBytes[offset] === 0xFF && jpegBytes[offset + 1] === 0xDA) {
+            break; // Start of scan data
+        }
+        
+        const segmentLength = (jpegBytes[offset + 2] << 8) | jpegBytes[offset + 3];
+        offset += 2 + segmentLength;
+    }
+    
+    return null;
+}
+
+function insertEXIFIntoJPEG(jpegBytes, exifSegment) {
+    // Create new JPEG with original EXIF preserved
+    const newSize = jpegBytes.length + exifSegment.length;
+    const newBytes = new Uint8Array(newSize);
+    
+    let writeOffset = 0;
+    let readOffset = 0;
+    
+    // Copy SOI marker
+    newBytes[writeOffset++] = jpegBytes[readOffset++]; // 0xFF
+    newBytes[writeOffset++] = jpegBytes[readOffset++]; // 0xD8
+    
+    // Insert original EXIF segment
+    for (let i = 0; i < exifSegment.length; i++) {
+        newBytes[writeOffset++] = exifSegment[i];
+    }
+    
+    // Skip any existing EXIF segments in canvas output
+    while (readOffset < jpegBytes.length - 1) {
+        if (jpegBytes[readOffset] === 0xFF && jpegBytes[readOffset + 1] === 0xE1) {
+            // Skip existing EXIF
+            const segmentLength = (jpegBytes[readOffset + 2] << 8) | jpegBytes[readOffset + 3];
+            readOffset += 2 + segmentLength;
+        } else {
+            break;
+        }
+    }
+    
+    // Copy remaining JPEG data
+    while (readOffset < jpegBytes.length) {
+        newBytes[writeOffset++] = jpegBytes[readOffset++];
+    }
+    
+    // Convert to data URL
+    let binaryStr = '';
+    for (let i = 0; i < writeOffset; i++) {
+        binaryStr += String.fromCharCode(newBytes[i]);
+    }
+    
+    console.log(`Successfully preserved original EXIF data`);
+    return 'data:image/jpeg;base64,' + btoa(binaryStr);
+}
+
+function addEXIFToJPEG(jpegData, dpiX, dpiY) {
+    try {
+        console.log(`Attempting to add EXIF with DPI: ${dpiX} x ${dpiY}`);
+        
+        // Convert data URL to bytes
+        const base64Data = jpegData.split(',')[1];
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        
+        // Check if it's a valid JPEG
+        if (bytes[0] !== 0xFF || bytes[1] !== 0xD8) {
+            console.warn('Not a valid JPEG file, returning original');
+            return jpegData; // Not a JPEG, return original
+        }
+        
+        // Create EXIF data
+        const exifData = createEXIFWithDPI(dpiX, dpiY);
+        console.log(`Created EXIF data with ${exifData.length} bytes`);
+        
+        // Calculate how much data to skip (existing EXIF segments if any)
+        let readOffset = 2; // Skip SOI marker
+        let foundExisting = false;
+        
+        while (readOffset < bytes.length - 1) {
+            if (bytes[readOffset] === 0xFF && bytes[readOffset + 1] === 0xE1) {
+                // Found existing EXIF segment, skip it
+                const segmentLength = (bytes[readOffset + 2] << 8) | bytes[readOffset + 3];
+                console.log(`Found existing EXIF segment, skipping ${segmentLength} bytes`);
+                readOffset += 2 + segmentLength;
+                foundExisting = true;
+            } else {
+                break;
+            }
+        }
+        
+        // Calculate new size: SOI (2) + EXIF marker (2) + length (2) + "Exif\0\0" (6) + EXIF data + remaining JPEG
+        const remainingJpegSize = bytes.length - readOffset;
+        const newSize = 2 + 2 + 2 + 6 + exifData.length + remainingJpegSize;
+        const newBytes = new Uint8Array(newSize);
+        
+        console.log(`Creating new JPEG: original ${bytes.length} bytes, new ${newSize} bytes, EXIF data ${exifData.length} bytes`);
+        
+        let writeOffset = 0;
+        
+        // Copy SOI marker
+        newBytes[writeOffset++] = bytes[0]; // 0xFF
+        newBytes[writeOffset++] = bytes[1]; // 0xD8
+        
+        // Add EXIF marker
+        newBytes[writeOffset++] = 0xFF;
+        newBytes[writeOffset++] = 0xE1; // EXIF marker
+        
+        // EXIF segment length (including "Exif\0\0" identifier)
+        const exifSegmentLength = 6 + exifData.length;
+        newBytes[writeOffset++] = (exifSegmentLength >> 8) & 0xFF;
+        newBytes[writeOffset++] = exifSegmentLength & 0xFF;
+        
+        // Add "Exif\0\0" identifier
+        newBytes[writeOffset++] = 0x45; // 'E'
+        newBytes[writeOffset++] = 0x78; // 'x'
+        newBytes[writeOffset++] = 0x69; // 'i'
+        newBytes[writeOffset++] = 0x66; // 'f'
+        newBytes[writeOffset++] = 0x00; // \0
+        newBytes[writeOffset++] = 0x00; // \0
+        
+        // Add EXIF data
+        for (let i = 0; i < exifData.length; i++) {
+            newBytes[writeOffset++] = exifData[i];
+        }
+        
+        // Copy remaining JPEG data
+        for (let i = readOffset; i < bytes.length; i++) {
+            if (writeOffset >= newBytes.length) {
+                console.error(`Write offset ${writeOffset} exceeds array size ${newBytes.length}`);
+                return jpegData; // Return original on error
+            }
+            newBytes[writeOffset++] = bytes[i];
+        }
+        
+        console.log(`Successfully created JPEG with EXIF. Final size: ${writeOffset} bytes`);
+        
+        // Convert back to data URL
+        let binaryStr = '';
+        for (let i = 0; i < writeOffset; i++) {
+            binaryStr += String.fromCharCode(newBytes[i]);
+        }
+        
+        const result = 'data:image/jpeg;base64,' + btoa(binaryStr);
+        console.log(`EXIF injection complete. Original DPI should now be preserved.`);
+        return result;
+        
+    } catch (error) {
+        console.error('Error adding EXIF to JPEG:', error);
+        console.warn('Returning original image without EXIF modification');
+        return jpegData; // Return original on any error
+    }
+}
+
+// Pixel-perfect watermark compositing that preserves original image completely
+function createWatermarkWithOriginalIntegrity(originalFile, imageIndex) {
+    return new Promise((resolve) => {
+        if (!originalFile || !originalFile.type.includes('jpeg')) {
+            // Fallback for non-JPEG
+            const canvas = applyWatermark(originalImages[imageIndex], imageIndex);
+            resolve(canvas.toDataURL('image/jpeg', 1.0)); // Use quality 1.0 to minimize compression
+            return;
+        }
+
+        console.log(`Creating pixel-perfect watermark for: ${originalFile.name}`);
+        
+        // Read original file as ArrayBuffer to preserve all data
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const originalArrayBuffer = e.target.result;
+                const originalBytes = new Uint8Array(originalArrayBuffer);
+                
+                console.log(`Original file size: ${originalBytes.length} bytes`);
+                
+                // Create two canvases: one for compositing preview, one for precise pixel work
+                const originalImage = originalImages[imageIndex];
+                const previewCanvas = applyWatermark(originalImage, imageIndex);
+                
+                // Now create a high-precision canvas with exact original dimensions
+                const precisionCanvas = document.createElement('canvas');
+                const ctx = precisionCanvas.getContext('2d');
+                
+                // Set exact original pixel dimensions
+                precisionCanvas.width = originalImage.naturalWidth;
+                precisionCanvas.height = originalImage.naturalHeight;
+                
+                console.log(`Precision canvas: ${precisionCanvas.width} x ${precisionCanvas.height}`);
+                
+                // Disable any smoothing that might affect precision
+                ctx.imageSmoothingEnabled = false;
+                
+                // Draw original image at exact 1:1 pixel mapping
+                ctx.drawImage(originalImage, 0, 0, originalImage.naturalWidth, originalImage.naturalHeight);
+                
+                // Apply watermark with exact positioning
+                if (watermarkImage) {
+                    const maxWatermarkWidth = precisionCanvas.width * watermarkSize;
+                    const aspectRatio = watermarkImage.naturalHeight / watermarkImage.naturalWidth;
+                    const watermarkWidth = maxWatermarkWidth;
+                    const watermarkHeight = watermarkWidth * aspectRatio;
+                    
+                    const position = getWatermarkPosition(precisionCanvas.width, precisionCanvas.height, watermarkWidth, watermarkHeight);
+                    
+                    ctx.globalAlpha = watermarkOpacity;
+                    
+                    if (watermarkNegative) {
+                        const negativeWatermark = createNegativeWatermark(watermarkImage, watermarkWidth, watermarkHeight);
+                        ctx.drawImage(negativeWatermark, position.x, position.y);
+                    } else {
+                        ctx.drawImage(watermarkImage, position.x, position.y, watermarkWidth, watermarkHeight);
+                    }
+                    
+                    ctx.globalAlpha = 1.0;
+                }
+                
+                // Get the watermarked image data with maximum quality
+                const watermarkedDataURL = precisionCanvas.toDataURL('image/jpeg', 1.0);
+                
+                // Now preserve the original EXIF by transplanting it
+                const finalResult = transplantEXIFToNewImage(originalBytes, watermarkedDataURL);
+                
+                console.log('Pixel-perfect watermark with EXIF preservation complete');
+                resolve(finalResult);
+                
+            } catch (error) {
+                console.error('Error in pixel-perfect watermarking:', error);
+                // Fallback to standard method
+                const canvas = applyWatermark(originalImages[imageIndex], imageIndex);
+                resolve(canvas.toDataURL('image/jpeg', 0.98));
+            }
+        };
+        
+        reader.onerror = () => {
+            console.error('Error reading original file');
+            const canvas = applyWatermark(originalImages[imageIndex], imageIndex);
+            resolve(canvas.toDataURL('image/jpeg', 0.98));
+        };
+        
+        reader.readAsArrayBuffer(originalFile);
+    });
+}
+
+function transplantEXIFToNewImage(originalJpegBytes, newImageDataURL) {
+    try {
+        // Extract ALL metadata from original image
+        const metadata = extractAllJPEGMetadata(originalJpegBytes);
+        
+        if (metadata.length === 0) {
+            console.log('No metadata to preserve, returning new image as-is');
+            return newImageDataURL;
+        }
+        
+        // Convert new image to bytes 
+        const newImageBytes = dataURLToBytes(newImageDataURL);
+        
+        // Create final image with original metadata transplanted
+        const finalBytes = insertMetadataIntoJPEG(newImageBytes, metadata);
+        
+        // Convert back to data URL
+        let binary = '';
+        for (let i = 0; i < finalBytes.length; i++) {
+            binary += String.fromCharCode(finalBytes[i]);
+        }
+        
+        console.log(`Successfully transplanted ${metadata.length} metadata segments`);
+        return 'data:image/jpeg;base64,' + btoa(binary);
+        
+    } catch (error) {
+        console.error('Error transplanting EXIF:', error);
+        return newImageDataURL;
+    }
+}
+
+function extractAllJPEGMetadata(jpegBytes) {
+    const segments = [];
+    let offset = 2; // Skip SOI marker
+    
+    while (offset < jpegBytes.length - 4) {
+        const marker = (jpegBytes[offset] << 8) | jpegBytes[offset + 1];
+        
+        // Collect all metadata segments (EXIF, XMP, ICC, etc.)
+        if (marker >= 0xFFE0 && marker <= 0xFFEF) {
+            const length = (jpegBytes[offset + 2] << 8) | jpegBytes[offset + 3];
+            const segment = jpegBytes.slice(offset, offset + 2 + length);
+            segments.push(segment);
+            console.log(`Extracted metadata segment: marker 0x${marker.toString(16)}, ${length} bytes`);
+            offset += 2 + length;
+        } else if (marker === 0xFFDA) {
+            // Start of scan - stop here
+            break;
+        } else {
+            // Skip other segments
+            const length = (jpegBytes[offset + 2] << 8) | jpegBytes[offset + 3];
+            offset += 2 + length;
+        }
+    }
+    
+    return segments;
+}
+
+function insertMetadataIntoJPEG(jpegBytes, metadataSegments) {
+    if (metadataSegments.length === 0) return jpegBytes;
+    
+    // Calculate total size needed
+    const metadataSize = metadataSegments.reduce((total, seg) => total + seg.length, 0);
+    let readOffset = 2; // Skip SOI in new image
+    
+    // Skip any existing metadata in the new image
+    while (readOffset < jpegBytes.length - 1) {
+        const marker = (jpegBytes[readOffset] << 8) | jpegBytes[readOffset + 1];
+        if (marker >= 0xFFE0 && marker <= 0xFFEF) {
+            const segLength = (jpegBytes[readOffset + 2] << 8) | jpegBytes[readOffset + 3];
+            readOffset += 2 + segLength;
+        } else break;
+    }
+    
+    const finalSize = 2 + metadataSize + (jpegBytes.length - readOffset);
+    const result = new Uint8Array(finalSize);
+    let writeOffset = 0;
+    
+    // Copy SOI
+    result[writeOffset++] = jpegBytes[0];
+    result[writeOffset++] = jpegBytes[1];
+    
+    // Insert all original metadata
+    metadataSegments.forEach(segment => {
+        result.set(segment, writeOffset);
+        writeOffset += segment.length;
+    });
+    
+    // Copy rest of new image
+    result.set(jpegBytes.slice(readOffset), writeOffset);
+    
+    return result;
+}
+
+function extractOriginalEXIF(jpegBytes) {
+    let offset = 2; // Skip SOI
+    while (offset < jpegBytes.length - 4) {
+        const marker = (jpegBytes[offset] << 8) | jpegBytes[offset + 1];
+        if (marker === 0xFFE1) { // EXIF marker
+            const length = (jpegBytes[offset + 2] << 8) | jpegBytes[offset + 3];
+            // Check for "Exif\0\0"
+            if (jpegBytes[offset + 4] === 0x45 && jpegBytes[offset + 5] === 0x78 &&
+                jpegBytes[offset + 6] === 0x69 && jpegBytes[offset + 7] === 0x66 &&
+                jpegBytes[offset + 8] === 0x00 && jpegBytes[offset + 9] === 0x00) {
+                console.log(`Found EXIF: ${length} bytes`);
+                return jpegBytes.slice(offset, offset + 2 + length);
+            }
+        }
+        if (marker === 0xFFDA) break; // Start of scan
+        const segLength = (jpegBytes[offset + 2] << 8) | jpegBytes[offset + 3];
+        offset += 2 + segLength;
+    }
+    return null;
+}
+
+function dataURLToBytes(dataURL) {
+    const base64 = dataURL.split(',')[1];
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+}
+
+function mergeEXIFWithImage(imageBytes, exifSegment) {
+    // Create new image: SOI + EXIF + rest of image (skipping any existing EXIF)
+    let readOffset = 2; // Skip SOI in canvas image
+    
+    // Skip any existing EXIF in canvas output
+    while (readOffset < imageBytes.length - 1) {
+        if (imageBytes[readOffset] === 0xFF && imageBytes[readOffset + 1] === 0xE1) {
+            const segLength = (imageBytes[readOffset + 2] << 8) | imageBytes[readOffset + 3];
+            readOffset += 2 + segLength;
+        } else break;
+    }
+    
+    const newSize = 2 + exifSegment.length + (imageBytes.length - readOffset);
+    const result = new Uint8Array(newSize);
+    let writeOffset = 0;
+    
+    // SOI
+    result[writeOffset++] = imageBytes[0];
+    result[writeOffset++] = imageBytes[1];
+    
+    // Original EXIF
+    result.set(exifSegment, writeOffset);
+    writeOffset += exifSegment.length;
+    
+    // Rest of image
+    result.set(imageBytes.slice(readOffset), writeOffset);
+    
+    // Convert back to data URL
+    let binary = '';
+    for (let i = 0; i < result.length; i++) {
+        binary += String.fromCharCode(result[i]);
+    }
+    return 'data:image/jpeg;base64,' + btoa(binary);
+}
+
+function getOptimalDataURLWithDPI(canvas, filename, dpiX = 72, dpiY = 72, imageIndex = 0) {
+    const mimeType = getImageMimeType(filename);
+    
+    console.log(`Processing ${filename}, index ${imageIndex}, DPI: ${dpiX}x${dpiY}`);
+    
+    // For JPEG files, use pixel-perfect approach with complete metadata preservation
+    if (mimeType === 'image/jpeg' && originalImageFiles[imageIndex]) {
+        console.log('Using pixel-perfect watermarking with complete metadata preservation');
+        return createWatermarkWithOriginalIntegrity(originalImageFiles[imageIndex], imageIndex);
+    }
+    
+    // Standard export for other formats
+    console.log(`Standard export for ${mimeType}`);
+    if (mimeType === 'image/jpeg' || mimeType === 'image/webp') {
+        return Promise.resolve(canvas.toDataURL(mimeType, 0.98));
+    }
+    return Promise.resolve(canvas.toDataURL(mimeType));
+}
+
+function extractDPIFromEXIF(arrayBuffer) {
+    // Simple EXIF DPI extraction for common cases
+    const view = new DataView(arrayBuffer);
+    
+    // Check for JPEG format (0xFFD8)
+    if (view.getUint16(0) === 0xFFD8) {
+        let offset = 2;
+        
+        // Look for EXIF marker (0xFFE1)
+        while (offset < view.byteLength - 4) {
+            const marker = view.getUint16(offset);
+            if (marker === 0xFFE1) {
+                // Found EXIF segment
+                const exifLength = view.getUint16(offset + 2);
+                const exifStart = offset + 4;
+                
+                // Look for "Exif\0\0" identifier
+                if (exifStart + 6 < view.byteLength) {
+                    const exifId = String.fromCharCode(
+                        view.getUint8(exifStart),
+                        view.getUint8(exifStart + 1),
+                        view.getUint8(exifStart + 2),
+                        view.getUint8(exifStart + 3)
+                    );
+                    
+                    if (exifId === 'Exif') {
+                        return extractDPIFromTIFF(view, exifStart + 6);
+                    }
+                }
+            }
+            
+            if (marker === 0xFFDA) break; // Start of scan data
+            const segmentLength = view.getUint16(offset + 2);
+            offset += 2 + segmentLength;
+        }
+    }
+    
+    return { dpiX: 72, dpiY: 72 }; // Default DPI
+}
+
+function extractDPIFromTIFF(view, tiffStart) {
+    try {
+        // Check byte order
+        const byteOrder = view.getUint16(tiffStart);
+        const isLittleEndian = byteOrder === 0x4949;
+        
+        // Get IFD offset
+        const ifdOffset = isLittleEndian ? 
+            view.getUint32(tiffStart + 4, true) : 
+            view.getUint32(tiffStart + 4, false);
+        
+        const ifdStart = tiffStart + ifdOffset;
+        
+        // Number of directory entries
+        const numEntries = isLittleEndian ? 
+            view.getUint16(ifdStart, true) : 
+            view.getUint16(ifdStart, false);
+        
+        let dpiX = 72, dpiY = 72;
+        let resolutionUnit = 2; // Default to inches
+        
+        // Read directory entries
+        for (let i = 0; i < numEntries; i++) {
+            const entryStart = ifdStart + 2 + (i * 12);
+            const tag = isLittleEndian ? 
+                view.getUint16(entryStart, true) : 
+                view.getUint16(entryStart, false);
+            
+            if (tag === 0x011A) { // X Resolution
+                const valueOffset = isLittleEndian ? 
+                    view.getUint32(entryStart + 8, true) : 
+                    view.getUint32(entryStart + 8, false);
+                const numerator = isLittleEndian ? 
+                    view.getUint32(tiffStart + valueOffset, true) : 
+                    view.getUint32(tiffStart + valueOffset, false);
+                const denominator = isLittleEndian ? 
+                    view.getUint32(tiffStart + valueOffset + 4, true) : 
+                    view.getUint32(tiffStart + valueOffset + 4, false);
+                dpiX = numerator / denominator;
+            } else if (tag === 0x011B) { // Y Resolution
+                const valueOffset = isLittleEndian ? 
+                    view.getUint32(entryStart + 8, true) : 
+                    view.getUint32(entryStart + 8, false);
+                const numerator = isLittleEndian ? 
+                    view.getUint32(tiffStart + valueOffset, true) : 
+                    view.getUint32(tiffStart + valueOffset, false);
+                const denominator = isLittleEndian ? 
+                    view.getUint32(tiffStart + valueOffset + 4, true) : 
+                    view.getUint32(tiffStart + valueOffset + 4, false);
+                dpiY = numerator / denominator;
+            } else if (tag === 0x0128) { // Resolution Unit
+                resolutionUnit = isLittleEndian ? 
+                    view.getUint16(entryStart + 8, true) : 
+                    view.getUint16(entryStart + 8, false);
+            }
+        }
+        
+        // Convert from cm to inches if needed
+        if (resolutionUnit === 3) {
+            dpiX *= 2.54;
+            dpiY *= 2.54;
+        }
+        
+        return { dpiX: Math.round(dpiX), dpiY: Math.round(dpiY) };
+    } catch (e) {
+        console.warn('Error extracting DPI from TIFF:', e);
+        return { dpiX: 72, dpiY: 72 };
+    }
+}
+
+function createHighDPICanvas(image, dpi) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Ensure exact pixel dimensions match the original image
+    canvas.width = image.naturalWidth || image.width;
+    canvas.height = image.naturalHeight || image.height;
+    
+    // Configure for high quality rendering
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    
+    // Disable any automatic scaling
+    ctx.scale(1, 1);
+    
+    return canvas;
+}
+
 function downloadAllImages() {
     if (!watermarkImage || originalImages.length === 0) {
         alert(translations[currentLanguage]['no-images-warning']);
@@ -311,11 +995,11 @@ function downloadAllImages() {
     // Add a small delay between downloads to prevent browser blocking
     originalImages.forEach((img, index) => {
         setTimeout(() => {
-            const canvas = applyWatermark(img);
+            const canvas = applyWatermark(img, index);
             if (canvas) {
                 const originalName = originalImageNames[index];
                 const watermarkedName = getWatermarkedFilename(originalName);
-                downloadImage(canvas, watermarkedName);
+                downloadImage(canvas, watermarkedName, originalName, index);
             }
         }, index * 100); // 100ms delay between each download
     });
@@ -330,7 +1014,7 @@ function showFullSizePreview(imageIndex) {
         existingPreview.remove();
     }
     
-    const canvas = applyWatermark(originalImages[currentPreviewIndex]);
+    const canvas = applyWatermark(originalImages[currentPreviewIndex], currentPreviewIndex);
     const imageSrc = canvas.toDataURL();
     
     // Create overlay
@@ -499,7 +1183,7 @@ function updatePreviewImage() {
     }
     
     // Generate new watermarked image
-    const canvas = applyWatermark(originalImages[currentPreviewIndex]);
+    const canvas = applyWatermark(originalImages[currentPreviewIndex], currentPreviewIndex);
     const imageSrc = canvas.toDataURL();
     
     // Update the preview image
@@ -594,7 +1278,7 @@ function downloadImageFromPreview() {
     if (preview && preview.canvas) {
         const originalName = originalImageNames[currentPreviewIndex];
         const watermarkedName = getWatermarkedFilename(originalName);
-        downloadImage(preview.canvas, watermarkedName);
+        downloadImage(preview.canvas, watermarkedName, originalName, currentPreviewIndex);
     }
 }
 
@@ -625,7 +1309,7 @@ function updateWatermarkedImages() {
     `;
     
     originalImages.forEach((img, index) => {
-        const canvas = applyWatermark(img);
+        const canvas = applyWatermark(img, index);
         if (canvas) {
             // Create watermarked image
             const watermarkedImage = new Image();
@@ -640,11 +1324,54 @@ function updateWatermarkedImages() {
     });
 }
 
-function downloadImage(canvas, filename) {
+function downloadImage(canvas, filename, originalFilename = null, imageIndex = 0) {
     const link = document.createElement('a');
     link.download = filename;
-    link.href = canvas.toDataURL();
-    link.click();
+    
+    // Use original filename to determine optimal format and quality
+    const sourceFilename = originalFilename || filename;
+    
+    // Get DPI information
+    const dpi = canvas.dpi || originalImageDPI[imageIndex] || { dpiX: 72, dpiY: 72 };
+    
+    // Verify final canvas dimensions match original
+    const originalDims = canvas.originalDimensions;
+    if (originalDims) {
+        console.log(`Downloading ${filename}: ${canvas.width}×${canvas.height} pixels (Original: ${originalDims.width}×${originalDims.height}) at ${dpi.dpiX}×${dpi.dpiY} DPI`);
+        
+        if (canvas.width !== originalDims.width || canvas.height !== originalDims.height) {
+            console.warn(`WARNING: Canvas dimensions ${canvas.width}×${canvas.height} don't match original ${originalDims.width}×${originalDims.height}!`);
+        }
+        
+        // Verify DPI values are reasonable
+        if (dpi.dpiX <= 0 || dpi.dpiY <= 0 || dpi.dpiX > 5000 || dpi.dpiY > 5000) {
+            console.warn(`WARNING: Suspicious DPI values ${dpi.dpiX}x${dpi.dpiY}, using 150 DPI as fallback`);
+            dpi.dpiX = 150;
+            dpi.dpiY = 150;
+        }
+    } else {
+        console.log(`Downloading ${filename} with DPI: ${dpi.dpiX}×${dpi.dpiY}`);
+    }
+    
+    // Use enhanced data URL function that preserves original EXIF
+    console.log(`Getting optimal data URL with EXIF preservation`);
+    const dataURLPromise = getOptimalDataURLWithDPI(canvas, sourceFilename, dpi.dpiX, dpi.dpiY, imageIndex);
+    
+    // Handle both promise and direct return cases
+    if (dataURLPromise instanceof Promise) {
+        dataURLPromise.then(dataURL => {
+            link.href = dataURL;
+            link.click();
+            console.log(`Download initiated with preserved EXIF`);
+        }).catch(error => {
+            console.error('Error with EXIF preservation, falling back:', error);
+            link.href = canvas.toDataURL('image/jpeg', 0.95);
+            link.click();
+        });
+    } else {
+        link.href = dataURLPromise;
+        link.click();
+    }
 }
 
 function showWatermarkPreview() {
@@ -718,6 +1445,46 @@ function handleWatermarkUpload(event) {
     }
 }
 
+function updateDPIDisplay() {
+    const dpiInfo = document.getElementById('dpi-info');
+    if (!dpiInfo) return;
+    
+    if (originalImageDPI.length === 0 || originalImages.length === 0) {
+        dpiInfo.innerHTML = '';
+        return;
+    }
+    
+    if (originalImages.length === 1) {
+        const image = originalImages[0];
+        const dpi = originalImageDPI[0];
+        const width = image.naturalWidth || image.width;
+        const height = image.naturalHeight || image.height;
+        dpiInfo.innerHTML = `📐 Image: ${width} × ${height} pixels at ${dpi.dpiX} × ${dpi.dpiY} DPI (exact dimensions preserved)`;
+    } else {
+        // Get dimension info for multiple images
+        const dimensions = originalImages.map((img, i) => {
+            const width = img.naturalWidth || img.width;
+            const height = img.naturalHeight || img.height;
+            const dpi = originalImageDPI[i] || { dpiX: 72, dpiY: 72 };
+            return { width, height, dpiX: dpi.dpiX, dpiY: dpi.dpiY };
+        });
+        
+        const maxWidth = Math.max(...dimensions.map(d => d.width));
+        const maxHeight = Math.max(...dimensions.map(d => d.height));
+        const minWidth = Math.min(...dimensions.map(d => d.width));
+        const minHeight = Math.min(...dimensions.map(d => d.height));
+        
+        if (maxWidth === minWidth && maxHeight === minHeight) {
+            // All images same dimensions
+            const dpi = originalImageDPI[0];
+            dpiInfo.innerHTML = `📐 ${originalImages.length} images: ${maxWidth} × ${maxHeight} pixels at ${dpi.dpiX} × ${dpi.dpiY} DPI (dimensions preserved)`;
+        } else {
+            // Various dimensions
+            dpiInfo.innerHTML = `📐 ${originalImages.length} images: ${minWidth}-${maxWidth} × ${minHeight}-${maxHeight} pixels with original DPI (each preserved exactly)`;
+        }
+    }
+}
+
 function handleFileUpload(event) {
     const files = event.target.files;
     const imageContainer = document.getElementById('image-container');
@@ -726,6 +1493,11 @@ function handleFileUpload(event) {
     imageContainer.innerHTML = `<h3>${translations[currentLanguage]['original-images-title']}</h3>`;
     originalImages = [];
     originalImageNames = [];
+    originalImageFiles = [];
+    originalImageDPI = [];
+    
+    // Clear DPI display
+    updateDPIDisplay();
     
     if (files.length === 0) {
         updateWatermarkedImages();
@@ -733,25 +1505,29 @@ function handleFileUpload(event) {
     }
     
     let loadedCount = 0;
+    let dpiReadCount = 0;
     const totalFiles = Array.from(files).filter(file => file.type.startsWith('image/')).length;
     
     Array.from(files).forEach(file => {
         if (file.type.startsWith('image/')) {
             const img = new Image();
             const reader = new FileReader();
+            const dpiReader = new FileReader();
             
+            // Read as DataURL for image display
             reader.onload = function(e) {
                 img.src = e.target.result;
                 img.onload = function() {
                     // Store original image and filename
                     originalImages.push(img);
                     originalImageNames.push(file.name);
+                    originalImageFiles.push(file);
                     
                     // Display original image in grid
                     const originalImg = img.cloneNode();
                     imageContainer.appendChild(originalImg);
                     
-                    // Update watermarked images when all images are loaded
+                    // Check if all images are loaded
                     loadedCount++;
                     if (loadedCount === totalFiles) {
                         updateWatermarkedImages();
@@ -759,7 +1535,21 @@ function handleFileUpload(event) {
                 };
             };
             
+            // Read as ArrayBuffer for DPI extraction
+            dpiReader.onload = function(e) {
+                const dpi = extractDPIFromEXIF(e.target.result);
+                originalImageDPI.push(dpi);
+                console.log(`Extracted DPI from ${file.name}: ${dpi.dpiX}x${dpi.dpiY}`);
+                
+                // Update DPI display when all DPI data is read
+                dpiReadCount++;
+                if (dpiReadCount === totalFiles) {
+                    updateDPIDisplay();
+                }
+            };
+            
             reader.readAsDataURL(file);
+            dpiReader.readAsArrayBuffer(file);
         }
     });
 }
