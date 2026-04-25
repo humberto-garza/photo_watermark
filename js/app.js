@@ -11,6 +11,7 @@ let originalImageDPI = []; // Store DPI information
 let currentPreviewIndex = 0;
 let currentLanguage = 'en';
 let previewUpdateTimer = null; // Debouncer for preview updates
+let mainUpdateTimer = null; // Debouncer for main preview updates
 
 // Translation data
 const translations = {
@@ -101,7 +102,7 @@ function loadLanguageFromStorage() {
         const savedLang = localStorage.getItem('language');
         if (savedLang && translations[savedLang]) {
             currentLanguage = savedLang;
-            document.getElementById('language-select').value = savedLang;
+            updateLanguageDisplay(savedLang);
             changeLanguage(savedLang);
             return true;
         }
@@ -109,6 +110,68 @@ function loadLanguageFromStorage() {
         console.warn('Could not load language preference:', e);
     }
     return false;
+}
+
+function updateLanguageDisplay(lang) {
+    const currentLangSpan = document.querySelector('.current-language');
+    const languageOptions = document.querySelectorAll('.language-option');
+    
+    // Update current language display
+    if (currentLangSpan) {
+        currentLangSpan.textContent = lang.toUpperCase();
+    }
+    
+    // Update active state in menu
+    languageOptions.forEach(option => {
+        option.classList.remove('active');
+        if (option.dataset.lang === lang) {
+            option.classList.add('active');
+        }
+    });
+}
+
+function initializeBurgerMenu() {
+    const burgerBtn = document.getElementById('language-burger');
+    const languageMenu = document.getElementById('language-menu');
+    const languageOptions = document.querySelectorAll('.language-option');
+    
+    if (!burgerBtn || !languageMenu) return;
+    
+    // Toggle menu on burger button click
+    burgerBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        languageMenu.classList.toggle('hidden');
+    });
+    
+    // Handle language selection
+    languageOptions.forEach(option => {
+        option.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const selectedLang = option.dataset.lang;
+            if (selectedLang && translations[selectedLang]) {
+                changeLanguage(selectedLang);
+                updateLanguageDisplay(selectedLang);
+                languageMenu.classList.add('hidden');
+            }
+        });
+    });
+    
+    // Close menu when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!burgerBtn.contains(e.target) && !languageMenu.contains(e.target)) {
+            languageMenu.classList.add('hidden');
+        }
+    });
+    
+    // Close menu on escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            languageMenu.classList.add('hidden');
+        }
+    });
+    
+    // Initialize the display
+    updateLanguageDisplay(currentLanguage);
 }
 
 function updateDynamicTranslations() {
@@ -1286,13 +1349,14 @@ function updateWatermarkedImages() {
     const watermarkedContainer = document.getElementById('watermarked-image-container');
     
     if (!watermarkImage || originalImages.length === 0) {
-        watermarkedContainer.innerHTML = `<h2>${translations[currentLanguage]['watermarked-images-title']}</h2>`;
+        watermarkedContainer.innerHTML = '';
         
         if (originalImages.length > 0 && !watermarkImage) {
             const message = document.createElement('p');
             message.textContent = translations[currentLanguage]['watermark-warning'];
             message.style.color = '#666';
-            message.style.fontStyle = 'italic';
+            message.style.fontSize = '13px';
+            message.style.textAlign = 'center';
             message.style.marginTop = '20px';
             message.id = 'watermark-warning';
             watermarkedContainer.appendChild(message);
@@ -1300,13 +1364,9 @@ function updateWatermarkedImages() {
         return;
     }
     
-    // Clear everything including any warning messages
-    watermarkedContainer.innerHTML = `
-        <div class="results-header">
-            <h2>${translations[currentLanguage]['watermarked-images-title']}</h2>
-            <button class="upload-btn download-all-btn" onclick="downloadAllImages()">${translations[currentLanguage]['download-all-btn']}</button>
-        </div>
-    `;
+    // Clear container and create grid
+    watermarkedContainer.innerHTML = '';
+    watermarkedContainer.className = 'image-grid';
     
     originalImages.forEach((img, index) => {
         const canvas = applyWatermark(img, index);
@@ -1378,32 +1438,11 @@ function showWatermarkPreview() {
     const display = document.getElementById('watermark-display');
     
     if (watermarkImage) {
-        // Show watermark image with change and clear buttons
-        display.innerHTML = `
-            <div class="watermark-loaded">
-                <img src="${watermarkImage.src}" style="max-width: 200px; max-height: 100px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-                <div class="watermark-actions">
-                    <input type="file" id="watermark-input-change" accept="image/*" style="display: none;">
-                    <label for="watermark-input-change" class="upload-btn watermark-btn change-btn">${translations[currentLanguage]['change-watermark-btn']}</label>
-                    <button class="upload-btn clear-btn" onclick="clearWatermark()">${translations[currentLanguage]['clear-watermark-btn']}</button>
-                </div>
-            </div>
-        `;
-        
-        // Add event listener for the new change button
-        document.getElementById('watermark-input-change').addEventListener('change', handleWatermarkUpload);
+        // Show watermark image
+        display.innerHTML = `<img src="${watermarkImage.src}" alt="Watermark">`;
     } else {
-        // Show initial upload interface
-        display.innerHTML = `
-            <div class="watermark-placeholder">
-                <input type="file" id="watermark-input" accept="image/*" style="display: none;">
-                <label for="watermark-input" class="upload-btn watermark-btn">${translations[currentLanguage]['choose-watermark-btn']}</label>
-                <p>${translations[currentLanguage]['watermark-instruction']}</p>
-            </div>
-        `;
-        
-        // Add event listener for the initial upload button
-        document.getElementById('watermark-input').addEventListener('change', handleWatermarkUpload);
+        // Show placeholder text
+        display.innerHTML = `<div style="color: #666; font-size: 12px; text-align: center; padding: 20px;">No watermark selected</div>`;
     }
 }
 
@@ -1414,7 +1453,7 @@ function clearWatermark() {
     
     // Clear watermarked images
     const watermarkedContainer = document.getElementById('watermarked-image-container');
-    watermarkedContainer.innerHTML = `<h2>${translations[currentLanguage]['watermarked-images-title']}</h2>`;
+    watermarkedContainer.innerHTML = `<h3>${translations[currentLanguage]['watermarked-images-title']}</h3>`;
 }
 
 function handleWatermarkUpload(event) {
@@ -1437,7 +1476,7 @@ function handleWatermarkUpload(event) {
                 }
                 
                 // Update watermarked images if any exist
-                updateWatermarkedImages();
+                debouncedUpdateMain();
             };
             watermarkImage.src = e.target.result;
         };
@@ -1489,8 +1528,9 @@ function handleFileUpload(event) {
     const files = event.target.files;
     const imageContainer = document.getElementById('image-container');
     
-    // Clear previous images but keep the heading
-    imageContainer.innerHTML = `<h3>${translations[currentLanguage]['original-images-title']}</h3>`;
+    // Clear previous images and reset arrays
+    imageContainer.innerHTML = '';
+    imageContainer.className = 'image-grid';
     originalImages = [];
     originalImageNames = [];
     originalImageFiles = [];
@@ -1572,16 +1612,33 @@ function updatePreviews() {
     updateWatermarkedImages();
 }
 
+function debouncedUpdateMain() {
+    // Update display values immediately for instant feedback
+    updateSettingsValues();
+    
+    // Clear existing timer
+    if (mainUpdateTimer) {
+        clearTimeout(mainUpdateTimer);
+    }
+    
+    // Set new timer for 300 milliseconds
+    mainUpdateTimer = setTimeout(() => {
+        updatePreviews();
+        mainUpdateTimer = null;
+    }, 300);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const fileInput = document.getElementById('file-input');
     const sizeRange = document.getElementById('watermark-size');
     const opacityRange = document.getElementById('watermark-opacity');
     const negativeCheckbox = document.getElementById('watermark-negative');
-    const updateBtn = document.getElementById('update-preview-btn');
-    const languageSelect = document.getElementById('language-select');
     
     // Load language preference first
     loadLanguageFromStorage();
+    
+    // Initialize burger menu
+    initializeBurgerMenu();
     
     // Load saved settings and watermark
     loadSettingsFromStorage();
@@ -1589,18 +1646,16 @@ document.addEventListener('DOMContentLoaded', function() {
     
     fileInput.addEventListener('change', handleFileUpload);
     
-    // Only update display values, not previews
-    sizeRange.addEventListener('input', updateSettingsValues);
-    opacityRange.addEventListener('input', updateSettingsValues);
-    negativeCheckbox.addEventListener('change', updateSettingsValues);
+    // Setup watermark input
+    const watermarkInput = document.getElementById('watermark-input');
+    if (watermarkInput) {
+        watermarkInput.addEventListener('change', handleWatermarkUpload);
+    }
     
-    // Update previews only when button is clicked
-    updateBtn.addEventListener('click', updatePreviews);
-    
-    // Language switcher event
-    languageSelect.addEventListener('change', function() {
-        changeLanguage(this.value);
-    });
+    // Auto-update with debouncing
+    sizeRange.addEventListener('input', debouncedUpdateMain);
+    opacityRange.addEventListener('input', debouncedUpdateMain);
+    negativeCheckbox.addEventListener('change', debouncedUpdateMain);
     
     // Initialize positioning interface
     setupPositionInterface();
@@ -1615,88 +1670,58 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function setupPositionInterface() {
-    const positionContainer = document.getElementById('watermark-position-container');
-    if (!positionContainer) return;
-    
-    const positionArea = positionContainer.querySelector('.position-area');
-    const watermarkDot = positionContainer.querySelector('.watermark-dot');
-    
-    if (!positionArea || !watermarkDot) return;
-    
-    // Position the dot based on current watermark position
-    updatePositionInterface();
-    
-    // Make the dot draggable
+    const positionArea = document.getElementById('watermark-position-container');
+    if (!positionArea) {
+        console.warn('Position container not found');
+        return;
+    }
+
     let isDragging = false;
     
-    // Mouse events
-    watermarkDot.addEventListener('mousedown', startDrag);
-    positionArea.addEventListener('mousedown', function(e) {
-        if (e.target === positionArea) {
-            updatePositionFromEvent(e);
-        }
-    });
-    
-    // Touch events for mobile
-    watermarkDot.addEventListener('touchstart', startDrag, { passive: false });
-    positionArea.addEventListener('touchstart', function(e) {
-        if (e.target === positionArea) {
-            updatePositionFromEvent(e);
-        }
-    }, { passive: false });
-    
-    function startDrag(e) {
-        e.preventDefault();
+    function handlePointerDown(e) {
         isDragging = true;
-        // Add both mouse and touch event listeners
-        document.addEventListener('mousemove', handleDrag);
-        document.addEventListener('mouseup', stopDrag);
-        document.addEventListener('touchmove', handleDrag, { passive: false });
-        document.addEventListener('touchend', stopDrag);
-    }
-    
-    function handleDrag(e) {
-        if (!isDragging) return;
+        positionArea.setPointerCapture(e.pointerId);
+        updatePosition(e);
         e.preventDefault();
-        updatePositionFromEvent(e);
     }
     
-    function stopDrag() {
-        isDragging = false;
-        // Remove both mouse and touch event listeners
-        document.removeEventListener('mousemove', handleDrag);
-        document.removeEventListener('mouseup', stopDrag);
-        document.removeEventListener('touchmove', handleDrag);
-        document.removeEventListener('touchend', stopDrag);
-    }
-    
-    function updatePositionFromEvent(e) {
-        const rect = positionArea.getBoundingClientRect();
-        const padding = 10; // Match CSS padding
-        
-        // Get coordinates from either mouse or touch event
-        let clientX, clientY;
-        if (e.touches && e.touches.length > 0) {
-            clientX = e.touches[0].clientX;
-            clientY = e.touches[0].clientY;
-        } else {
-            clientX = e.clientX;
-            clientY = e.clientY;
+    function handlePointerMove(e) {
+        if (isDragging) {
+            updatePosition(e);
         }
+    }
+    
+    function handlePointerUp(e) {
+        isDragging = false;
+        positionArea.releasePointerCapture(e.pointerId);
+    }
+    
+    function updatePosition(e) {
+        const rect = positionArea.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width;
+        const y = (e.clientY - rect.top) / rect.height;
         
-        const x = clientX - rect.left - padding;
-        const y = clientY - rect.top - padding;
-        
-        // Calculate available area (subtract padding from both sides)
-        const availableWidth = rect.width - (padding * 2);
-        const availableHeight = rect.height - (padding * 2);
-        
-        // Convert to relative coordinates (0-1)
-        watermarkPositionX = Math.max(0, Math.min(1, x / availableWidth));
-        watermarkPositionY = Math.max(0, Math.min(1, y / availableHeight));
+        watermarkPositionX = Math.max(0, Math.min(1, x));
+        watermarkPositionY = Math.max(0, Math.min(1, y));
         
         updatePositionInterface();
-        updateSettingsValues();
+        saveSettingsToStorage();
+        debouncedUpdateMain();
+    }
+    
+    positionArea.addEventListener('pointerdown', handlePointerDown);
+    positionArea.addEventListener('pointermove', handlePointerMove);
+    positionArea.addEventListener('pointerup', handlePointerUp);
+    
+    // Initial position setup
+    updatePositionInterface();
+}
+
+function updatePositionInterface() {
+    const dot = document.querySelector('#watermark-position-container .watermark-dot');
+    if (dot) {
+        dot.style.left = (watermarkPositionX * 100) + '%';
+        dot.style.top = (watermarkPositionY * 100) + '%';
     }
 }
 

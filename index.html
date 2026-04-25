@@ -7,80 +7,87 @@
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-    <div class="language-switcher">
-        <select id="language-select">
-            <option value="en">English</option>
-            <option value="es">Español</option>
-        </select>
+    <div class="menu-bar">
+        <div class="menu-bar-content">
+            <h1 class="app-title" data-translate="app-title">Photo Watermark Tool</h1>
+            <div class="language-switcher">
+                <button id="language-burger" class="burger-btn">
+                    <div class="burger-icon">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                    <span class="current-language">EN</span>
+                </button>
+                <div id="language-menu" class="language-menu hidden">
+                    <div class="language-option" data-lang="en">English</div>
+                    <div class="language-option" data-lang="es">Español</div>
+                </div>
+            </div>
+        </div>
     </div>
     
     <div class="container">
-        <h1 data-translate="app-title">Photo Watermark Tool</h1>
-        
-        <div class="section images-section">
-            <h2 data-translate="images-section-title">Images to Watermark</h2>
-            <div class="upload-area">
-                <input type="file" id="file-input" accept="image/*" multiple>
-                <label for="file-input" class="upload-btn" data-translate="choose-images-btn">Choose Images to Watermark</label>
-            </div>
-            <div id="image-container" class="image-preview-grid"></div>
-            <div id="dpi-info" class="dpi-info" style="margin-top: 10px; font-size: 0.9em; color: #666;"></div>
-        </div>
-        
-        <div class="section watermark-section">
-            <h2 data-translate="watermark-options-title">Watermark Options</h2>
-            
-            <div class="watermark-upload">
-                <h3 data-translate="watermark-image-title">Watermark Image</h3>
-                <div class="watermark-display-container">
-                    <div id="watermark-display">
-                        <div class="watermark-placeholder">
-                            <input type="file" id="watermark-input" accept="image/*">
-                            <label for="watermark-input" class="upload-btn watermark-btn" data-translate="choose-watermark-btn">Choose Watermark Image</label>
-                            <p data-translate="watermark-instruction">Select an image to use as watermark</p>
-                        </div>
+        <div class="main-content">
+            <!-- Left Panel - Controls -->
+            <div class="control-panel">
+                <div class="upload-section">
+                    <h2 data-translate="images-section-title">Images</h2>
+                    <input type="file" id="file-input" accept="image/*" multiple>
+                    <label for="file-input" class="upload-btn" data-translate="choose-images-btn">Choose Images</label>
+                    <div id="dpi-info" class="dpi-info"></div>
+                </div>
+                
+                <div class="watermark-section">
+                    <h2 data-translate="watermark-options-title">Watermark</h2>
+                    <div class="watermark-upload">
+                        <input type="file" id="watermark-input" accept="image/*">
+                        <label for="watermark-input" class="upload-btn watermark-btn" data-translate="choose-watermark-btn">Choose Watermark</label>
+                        <div id="watermark-display" class="watermark-preview"></div>
                     </div>
-                    <div class="setting-group position-control">
-                        <label data-translate="position-label">Position:</label>
-                        <div class="watermark-position-container" id="watermark-position-container">
-                            <div class="position-area">
-                                <div class="watermark-dot"></div>
-                            </div>
-                            <p class="position-instruction" data-translate="position-instruction">Drag the watermark to position it</p>
-                        </div>
-                    </div>
-                    <div class="settings-controls">
-                        <div class="setting-group">
+                    
+                    <div class="settings">
+                        <div class="setting-row">
                             <label for="watermark-size" data-translate="size-label">Size:</label>
                             <input type="range" id="watermark-size" min="0.01" max="1" step="0.01" value="0.2">
                             <span id="size-value">20%</span>
                         </div>
                         
-                        <div class="setting-group">
+                        <div class="setting-row">
                             <label for="watermark-opacity" data-translate="opacity-label">Opacity:</label>
                             <input type="range" id="watermark-opacity" min="0.01" max="1" step="0.01" value="0.8">
                             <span id="opacity-value">80%</span>
                         </div>
                         
-                        <div class="setting-group checkbox-group">
+                        <div class="setting-row checkbox-row">
                             <label for="watermark-negative" class="checkbox-label">
                                 <input type="checkbox" id="watermark-negative">
-                                <span class="checkmark"></span>
                                 <span data-translate="invert-color-label">Invert Color</span>
                             </label>
                         </div>
+                        
+                        <div class="position-control">
+                            <label data-translate="position-label">Position:</label>
+                            <div class="position-area" id="watermark-position-container">
+                                <div class="watermark-dot"></div>
+                            </div>
+                            <p class="position-instruction" data-translate="position-instruction">Drag to position</p>
+                        </div>
                     </div>
                 </div>
-                
-                <div class="update-preview-section">
-                    <button id="update-preview-btn" class="upload-btn update-preview-btn" data-translate="update-preview-btn">Update Preview</button>
-                </div>
             </div>
-        </div>
-        
-        <div class="section results-section">
-            <div id="watermarked-image-container" class="image-grid">
-                <h3 data-translate="watermarked-images-title">Watermarked Images</h3>
+            
+            <!-- Right Panel - Content -->
+            <div class="content-panel">
+                <div class="images-grid">
+                    <h3 data-translate="original-images-title">Original Images</h3>
+                    <div id="image-container" class="image-grid"></div>
+                </div>
+                
+                <div class="results-grid">
+                    <h3 data-translate="watermarked-images-title">Watermarked Images</h3>
+                    <div id="watermarked-image-container" class="image-grid"></div>
+                </div>
             </div>
         </div>
     </div>
