@@ -13,12 +13,44 @@ let currentLanguage = 'en';
 let previewUpdateTimer = null; // Debouncer for preview updates
 let mainUpdateTimer = null; // Debouncer for main preview updates
 
+// Mobile detection function
+function isMobileDevice() {
+    return window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+// Setup mobile-specific file input behavior
+function setupMobileFileInput() {
+    const fileInput = document.getElementById('file-input');
+    const fileLabel = document.querySelector('label[for="file-input"]');
+    
+    if (isMobileDevice()) {
+        // Remove multiple attribute on mobile
+        fileInput.removeAttribute('multiple');
+        
+        // Update button text for single image
+        if (fileLabel) {
+            fileLabel.setAttribute('data-translate', 'choose-image-btn');
+            fileLabel.textContent = translations[currentLanguage]['choose-image-btn'];
+        }
+    } else {
+        // Ensure multiple attribute is present on desktop
+        fileInput.setAttribute('multiple', '');
+        
+        // Update button text for multiple images
+        if (fileLabel) {
+            fileLabel.setAttribute('data-translate', 'choose-images-btn');
+            fileLabel.textContent = translations[currentLanguage]['choose-images-btn'];
+        }
+    }
+}
+
 // Translation data
 const translations = {
     en: {
         'app-title': 'Photo Watermark Tool',
         'images-section-title': 'Images to Watermark',
         'choose-images-btn': 'Choose Images to Watermark',
+        'choose-image-btn': 'Choose Image to Watermark',
         'watermark-options-title': 'Watermark Options',
         'watermark-image-title': 'Watermark Image', 
         'choose-watermark-btn': 'Choose Watermark Image',
@@ -45,6 +77,7 @@ const translations = {
         'app-title': 'Herramienta de Marca de Agua',
         'images-section-title': 'Imágenes para Marcar',
         'choose-images-btn': 'Elegir Imágenes para Marcar',
+        'choose-image-btn': 'Elegir Imagen para Marcar',
         'watermark-options-title': 'Opciones de Marca de Agua',
         'watermark-image-title': 'Imagen de Marca de Agua',
         'choose-watermark-btn': 'Elegir Imagen de Marca de Agua',
@@ -90,6 +123,9 @@ function changeLanguage(lang) {
     
     // Update dynamic content that might already be loaded
     updateDynamicTranslations();
+    
+    // Update mobile file input text
+    setupMobileFileInput();
     
     // Refresh watermark preview to update button labels
     if (watermarkImage) {
@@ -1332,8 +1368,40 @@ function closeFullSizePreview() {
     // Remove keyboard event listener
     document.removeEventListener('keydown', handlePreviewKeydown);
     
-    // Update main watermarked images to reflect any changes made in preview
-    updateWatermarkedImages();
+    // On mobile, clear images to allow selecting new ones
+    if (isMobileDevice()) {
+        // Clear all image data
+        originalImages = [];
+        originalImageNames = [];
+        originalImageFiles = [];
+        originalImageDPI = [];
+        
+        // Clear image containers
+        const imageContainer = document.getElementById('image-container');
+        const watermarkedContainer = document.getElementById('watermarked-image-container');
+        
+        if (imageContainer) {
+            imageContainer.innerHTML = '';
+            imageContainer.className = 'image-grid';
+        }
+        
+        if (watermarkedContainer) {
+            watermarkedContainer.innerHTML = '';
+            watermarkedContainer.className = 'image-grid';
+        }
+        
+        // Clear DPI display
+        updateDPIDisplay();
+        
+        // Reset file input
+        const fileInput = document.getElementById('file-input');
+        if (fileInput) {
+            fileInput.value = '';
+        }
+    } else {
+        // Update main watermarked images to reflect any changes made in preview (desktop only)
+        updateWatermarkedImages();
+    }
 }
 
 function downloadImageFromPreview() {
@@ -1368,11 +1436,23 @@ function updateWatermarkedImages() {
     watermarkedContainer.innerHTML = '';
     watermarkedContainer.className = 'image-grid';
     
+    let imagesProcessed = 0;
+    const totalToProcess = originalImages.length;
+    
     originalImages.forEach((img, index) => {
         const canvas = applyWatermark(img, index);
         if (canvas) {
             // Create watermarked image
             const watermarkedImage = new Image();
+            watermarkedImage.onload = function() {
+                imagesProcessed++;
+                // When all images are processed, check for mobile auto-preview
+                if (imagesProcessed === totalToProcess && isMobileDevice()) {
+                    setTimeout(() => {
+                        showFullSizePreview(0);
+                    }, 100);
+                }
+            };
             watermarkedImage.src = canvas.toDataURL();
             
             // Add click functionality for full size preview
@@ -1640,6 +1720,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize burger menu
     initializeBurgerMenu();
     
+    // Setup mobile-specific behavior
+    setupMobileFileInput();
+    
     // Load saved settings and watermark
     loadSettingsFromStorage();
     const hasWatermark = loadWatermarkFromStorage();
@@ -1667,6 +1750,11 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize display values
     updateSettingsValues();
+    
+    // Handle window resize for mobile detection
+    window.addEventListener('resize', function() {
+        setupMobileFileInput();
+    });
 });
 
 function setupPositionInterface() {
