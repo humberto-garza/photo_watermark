@@ -36,6 +36,15 @@
                     <input type="file" id="file-input" accept="image/*" multiple>
                     <label for="file-input" class="upload-btn" data-translate="choose-images-btn">Choose Images</label>
                     <div id="dpi-info" class="dpi-info"></div>
+                    
+                    <!-- Mobile Image Preview -->
+                    <div id="mobile-image-preview" class="mobile-image-preview hidden">
+                        <h3 data-translate="selected-image-title">Selected Image</h3>
+                        <div class="mobile-image-container">
+                            <img id="mobile-preview-img" alt="Selected image">
+                        </div>
+                        <p class="mobile-progress-text" data-translate="mobile-progress-text">Now choose a watermark image below</p>
+                    </div>
                 </div>
                 
                 <div class="watermark-section">

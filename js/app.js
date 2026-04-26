@@ -71,7 +71,9 @@ const translations = {
         'original-images-title': 'Original Images',
         'full-size-preview-title': 'Full Size Preview',
         'download-btn': 'Download',
-        'close-btn': 'Close'
+        'close-btn': 'Close',
+        'selected-image-title': 'Selected Image',
+        'mobile-progress-text': 'Now choose a watermark image below'
     },
     es: {
         'app-title': 'Herramienta de Marca de Agua',
@@ -98,7 +100,9 @@ const translations = {
         'original-images-title': 'Imágenes Originales',
         'full-size-preview-title': 'Vista Previa Tamaño Completo',
         'download-btn': 'Descargar',
-        'close-btn': 'Cerrar'
+        'close-btn': 'Cerrar',
+        'selected-image-title': 'Imagen Seleccionada',
+        'mobile-progress-text': 'Ahora elige una imagen de marca de agua abajo'
     }
 };
 
@@ -1398,6 +1402,9 @@ function closeFullSizePreview() {
         if (fileInput) {
             fileInput.value = '';
         }
+        
+        // Clear mobile preview
+        clearMobileImagePreview();
     } else {
         // Update main watermarked images to reflect any changes made in preview (desktop only)
         updateWatermarkedImages();
@@ -1604,6 +1611,29 @@ function updateDPIDisplay() {
     }
 }
 
+// Mobile image preview functions
+function updateMobileImagePreview() {
+    if (!isMobileDevice()) return;
+    
+    const mobilePreview = document.getElementById('mobile-image-preview');
+    const mobileImg = document.getElementById('mobile-preview-img');
+    
+    if (originalImages.length > 0) {
+        // Show the first selected image
+        mobileImg.src = originalImages[0].src;
+        mobilePreview.classList.remove('hidden');
+    } else {
+        clearMobileImagePreview();
+    }
+}
+
+function clearMobileImagePreview() {
+    const mobilePreview = document.getElementById('mobile-image-preview');
+    if (mobilePreview) {
+        mobilePreview.classList.add('hidden');
+    }
+}
+
 function handleFileUpload(event) {
     const files = event.target.files;
     const imageContainer = document.getElementById('image-container');
@@ -1621,6 +1651,7 @@ function handleFileUpload(event) {
     
     if (files.length === 0) {
         updateWatermarkedImages();
+        clearMobileImagePreview();
         return;
     }
     
@@ -1651,6 +1682,11 @@ function handleFileUpload(event) {
                     loadedCount++;
                     if (loadedCount === totalFiles) {
                         updateWatermarkedImages();
+                        
+                        // Update mobile preview if on mobile
+                        if (isMobileDevice()) {
+                            updateMobileImagePreview();
+                        }
                     }
                 };
             };
