@@ -13,6 +13,9 @@ let currentLanguage = 'en';
 let previewUpdateTimer = null; // Debouncer for preview updates
 let mainUpdateTimer = null; // Debouncer for main preview updates
 
+// App version
+const APP_VERSION = '1.0.0';
+
 // Mobile detection function
 function isMobileDevice() {
     return window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -1826,6 +1829,12 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize error modal for mobile error handling
     initializeErrorModal();
+    
+    // Set app version
+    const versionElement = document.getElementById('app-version');
+    if (versionElement) {
+        versionElement.textContent = `v${APP_VERSION}`;
+    }
     
     // Setup mobile-specific behavior
     setupMobileFileInput();

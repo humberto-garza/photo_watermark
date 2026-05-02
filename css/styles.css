@@ -30,11 +30,27 @@ body {
     align-items: center;
 }
 
+.title-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
 .app-title {
     color: white;
     margin: 0;
     font-size: 24px;
     font-weight: 600;
+}
+
+.app-version {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 14px;
+    font-weight: 400;
+    background-color: rgba(255, 255, 255, 0.15);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
 }
 
 /* Language Switcher */
@@ -439,8 +455,17 @@ body {
         padding: 8px 12px;
     }
     
+    .title-section {
+        gap: 8px;
+    }
+    
     .app-title {
         font-size: 18px;
+    }
+    
+    .app-version {
+        font-size: 12px;
+        padding: 3px 6px;
     }
     
     .main-content {
