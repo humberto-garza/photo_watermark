@@ -73,7 +73,13 @@ const translations = {
         'download-btn': 'Download',
         'close-btn': 'Close',
         'selected-image-title': 'Selected Image',
-        'mobile-progress-text': 'Now choose a watermark image below'
+        'mobile-progress-text': 'Now choose a watermark image below',
+        'error-title': 'Error',
+        'error-localStorage': 'Could not save language preference',
+        'error-exif': 'Error preserving image metadata',
+        'error-file-read': 'Error reading image file',
+        'error-watermark-process': 'Error processing watermark',
+        'error-unknown': 'An unexpected error occurred'
     },
     es: {
         'app-title': 'Herramienta de Marca de Agua',
@@ -102,7 +108,13 @@ const translations = {
         'download-btn': 'Descargar',
         'close-btn': 'Cerrar',
         'selected-image-title': 'Imagen Seleccionada',
-        'mobile-progress-text': 'Ahora elige una imagen de marca de agua abajo'
+        'mobile-progress-text': 'Ahora elige una imagen de marca de agua abajo',
+        'error-title': 'Error',
+        'error-localStorage': 'No se pudo guardar la preferencia de idioma',
+        'error-exif': 'Error al preservar los metadatos de la imagen',
+        'error-file-read': 'Error al leer el archivo de imagen',
+        'error-watermark-process': 'Error al procesar la marca de agua',
+        'error-unknown': 'Ocurrió un error inesperado'
     }
 };
 
@@ -122,7 +134,7 @@ function changeLanguage(lang) {
     try {
         localStorage.setItem('language', lang);
     } catch (e) {
-        console.warn('Could not save language preference:', e);
+        showMobileError('error-localStorage', e.message);
     }
     
     // Update dynamic content that might already be loaded
@@ -147,7 +159,7 @@ function loadLanguageFromStorage() {
             return true;
         }
     } catch (e) {
-        console.warn('Could not load language preference:', e);
+        showMobileError('error-localStorage', e.message);
     }
     return false;
 }
@@ -242,6 +254,62 @@ function updateDynamicTranslations() {
     }
 }
 
+// Error Handling for Mobile Devices
+function showMobileError(errorKey, details = null) {
+    // On mobile devices, show a popup modal instead of console messages
+    if (isMobileDevice()) {
+        const modal = document.getElementById('error-modal');
+        const messageDiv = document.getElementById('error-message');
+        
+        if (modal && messageDiv) {
+            // Get translated error message
+            let message = translations[currentLanguage][errorKey] || translations['en'][errorKey] || 'An error occurred';
+            
+            // Add technical details if provided
+            if (details) {
+                message += `<br><br><small><strong>Technical details:</strong><br>${details}</small>`;
+            }
+            
+            messageDiv.innerHTML = message;
+            modal.classList.remove('hidden');
+        }
+    } else {
+        // On desktop, still use console for now (can be seen in dev tools)
+        const message = translations[currentLanguage][errorKey] || translations['en'][errorKey] || 'An error occurred';
+        if (details) {
+            console.error(message + ' - Details:', details);
+        } else {
+            console.error(message);
+        }
+    }
+}
+
+function initializeErrorModal() {
+    const modal = document.getElementById('error-modal');
+    const closeBtn = document.getElementById('error-close-btn');
+    
+    if (!modal || !closeBtn) return;
+    
+    // Close modal when close button is clicked
+    closeBtn.addEventListener('click', () => {
+        modal.classList.add('hidden');
+    });
+    
+    // Close modal when clicking outside the error container
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal || e.target.classList.contains('error-backdrop')) {
+            modal.classList.add('hidden');
+        }
+    });
+    
+    // Close modal on escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+            modal.classList.add('hidden');
+        }
+    });
+}
+
 function getWatermarkPosition(canvasWidth, canvasHeight, watermarkWidth, watermarkHeight) {
     // Calculate absolute position from relative coordinates
     const x = (canvasWidth - watermarkWidth) * watermarkPositionX;
@@ -258,7 +326,7 @@ function saveWatermarkToStorage(imageData) {
     try {
         localStorage.setItem('watermarkImage', imageData);
     } catch (e) {
-        console.warn('Could not save watermark to localStorage:', e);
+        showMobileError('error-localStorage', e.message);
     }
 }
 
@@ -278,7 +346,7 @@ function loadWatermarkFromStorage() {
             return true;
         }
     } catch (e) {
-        console.warn('Could not load watermark from localStorage:', e);
+        showMobileError('error-localStorage', e.message);
     }
     return false;
 }
@@ -294,7 +362,7 @@ function saveSettingsToStorage() {
         };
         localStorage.setItem('watermarkSettings', JSON.stringify(settings));
     } catch (e) {
-        console.warn('Could not save settings to localStorage:', e);
+        showMobileError('error-localStorage', e.message);
     }
 }
 
@@ -318,7 +386,7 @@ function loadSettingsFromStorage() {
             return true;
         }
     } catch (e) {
-        console.warn('Could not load settings from localStorage:', e);
+        showMobileError('error-localStorage', e.message);
     }
     return false;
 }
@@ -327,7 +395,7 @@ function clearWatermarkFromStorage() {
     try {
         localStorage.removeItem('watermarkImage');
     } catch (e) {
-        console.warn('Could not clear watermark from localStorage:', e);
+        showMobileError('error-localStorage', e.message);
     }
 }
 
@@ -499,13 +567,13 @@ function preserveOriginalEXIFWithWatermark(originalFile, canvas, imageIndex) {
                 resolve(finalImage);
                 
             } catch (error) {
-                console.error('Error preserving EXIF:', error);
+                showMobileError('error-exif', error.message);
                 resolve(canvas.toDataURL('image/jpeg', 0.95));
             }
         };
         
         reader.onerror = () => {
-            console.error('Error reading original file');
+            showMobileError('error-file-read');
             resolve(canvas.toDataURL('image/jpeg', 0.95));
         };
         
@@ -1756,6 +1824,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize burger menu
     initializeBurgerMenu();
     
+    // Initialize error modal for mobile error handling
+    initializeErrorModal();
+    
     // Setup mobile-specific behavior
     setupMobileFileInput();
     
@@ -1982,3 +2053,14 @@ function updatePreviewPositionInterface() {
         watermarkDot.style.top = top + 'px';
     }
 }
+
+// Global error handling for uncaught errors
+window.addEventListener('error', (event) => {
+    showMobileError('error-unknown', `${event.message} at ${event.filename}:${event.lineno}`);
+});
+
+// Global error handling for unhandled promise rejections
+window.addEventListener('unhandledrejection', (event) => {
+    showMobileError('error-unknown', event.reason?.message || 'Promise rejection');
+    event.preventDefault(); // Prevent the default console error
+});
